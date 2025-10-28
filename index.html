@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Score Master Pro - Game Scoreboard (GitHub Pages Ready)</title>
+  
+  <!-- Tải Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tải React, ReactDOM và Babel để biên dịch JSX -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <style>
+    /* Sử dụng font Inter cho thẩm mỹ và đảm bảo tính di động */
+    :root { font-family: 'Inter', sans-serif; }
+    /* Định nghĩa chiều cao cho thiết bị di động */
+    .mobile-screen { min-height: 100vh; }
+    /* Hiệu ứng âm thanh loading */
+    .loading-animation {
+      animation: pulse-ring 1.5s infinite;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(251, 191, 36, 0); }
+      100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(251, 191, 36, 0); }
+    }
+    /* Ẩn thanh cuộn ngang khi có bảng lịch sử rộng */
+    .history-container { overflow-x: auto; }
+  </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 transition-colors duration-300">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useMemo } = React;
+    const { createRoot } = ReactDOM;
+
+    // --- CONFIG & CONSTANTS ---
+    const LOCAL_STORAGE_KEY = 'scoreMasterProGameState_v2';
+    const MAX_PLAYERS = 4;
+    const AVAILABLE_PLAYERS = [
+      "Bình Đặng", "Dũng Hoàng", "Dũng Nguyễn", "Dự Phan",
+      "Định Ngô", "Đông Lê", "Khánh Đỗ", "Minh Anh",
+      "Nhân Trần", "Quý Huỳnh", "Tuấn Nguyễn"
+    ];
+
+    const CORE_AUDIO_FILES = [
+      "vanmoi", "dacong", "datru", "colen1", "colen2", "colen3", "va", "dathua", 
+      "chiabuon", "kethucsom", "confirm", "hoantac", "setlai", "thaydoinguoichoi", 
+      "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", 
+      "11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
+      "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31" // Điểm từ 0 đến 31
+    ];
+
+    // --- UTILITY FUNCTIONS ---
+    // Hàm chuyển tên có dấu thành không dấu, viết thường (cho file audio)
+    const toUnaccented = (str) => {
+      if (!str) return '';
+      str = str.toLowerCase().trim();
+      str = str.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g, "a");
+      str = str.replace(/è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ/g, "e");
+      str = str.replace(/ì|í|ị|ỉ|ĩ/g, "i");
+      str = str.replace(/ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ/g, "o");
+      str = str.replace(/ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ/g, "u");
+      str = str.replace(/ỳ|ý|ỵ|ỷ|ỹ/g, "y");
+      str = str.replace(/đ/g, "d");
+      str = str.replace(/\s+/g, ""); // Xóa khoảng trắng
+      return str;
+    };
+
+    // Tạo ID người chơi
+    const createPlayerId = (index) => `P${index + 1}`;
+
+    // Trạng thái game ban đầu
+    const initialGameState = {
+        players: [], // {id: 'P1', name: 'Bình Đặng'}
+        maxRounds: null,
+        history: [], // [{round: 1, scores: [{playerId: 'P1', roundScore: 5}, ...]}, ...]
+        gameState: 'SETUP_PLAYERS', // SETUP_PLAYERS, SETUP_ROUNDS, PLAYING, FINISHED
+        showHistory: true, // Mặc định hiển thị lịch sử
+    };
+
+    // --- LOCAL STORAGE FUNCTIONS ---
+    const loadGameState = () => {
+      try {
+        const serializedState = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (serializedState === null) return initialGameState;
+        const savedState = JSON.parse(serializedState);
+        // Hợp nhất với trạng thái ban đầu để đảm bảo các key mới (như showHistory) luôn có
+        return { ...initialGameState, ...savedState }; 
+      } catch (e) {
+        console.error("Error loading state from localStorage:", e);
+        return initialGameState;
+      }
+    };
+
+    const saveGameState = (state) => {
+      try {
+        const serializedState = JSON.stringify(state);
+        localStorage.setItem(LOCAL_STORAGE_KEY, serializedState);
+      } catch (e) {
+        console.error("Error saving state to localStorage:", e);
+      }
+    };
+
+    // --- AUDIO HOOK (Feature 4 & Preload) ---
+    const useAudio = (players) => {
+      const [audioQueue, setAudioQueue] = useState([]);
+      const [isSpeaking, setIsSpeaking] = useState(false);
+      const audioCache = useMemo(() => new Map(), []); // Dùng Map để lưu trữ Audio objects
+
+      // 1. Preload tất cả các file cần thiết
+      useEffect(() => {
+        const playerAudioNames = players.map(p => toUnaccented(p.name));
+        const allFilesToCache = new Set([...CORE_AUDIO_FILES, ...playerAudioNames]);
+
+        allFilesToCache.forEach(name => {
+          const path = `/audio/${name}.mp3`;
+          if (!audioCache.has(name)) {
+            try {
+                const audio = new Audio(path);
+                audio.load();
+                audioCache.set(name, audio);
+                // console.log(`[Audio] Preloading: ${path}`);
+            } catch (e) {
+                // console.warn(`[Audio] Failed to load ${path}`);
+                audioCache.set(name, null); // Đánh dấu là đã thử tải
+            }
+          }
+        });
+      }, [players, audioCache]);
+
+      // 2. Xử lý hàng đợi âm thanh
+      useEffect(() => {
+        if (audioQueue.length > 0 && !isSpeaking) {
+          setIsSpeaking(true);
+          const nextFileKey = audioQueue[0];
+          const audioObject = audioCache.get(nextFileKey);
+
+          if (audioObject) {
+            audioObject.currentTime = 0;
+            audioObject.onended = () => {
+              setAudioQueue(prev => prev.slice(1));
+              setIsSpeaking(false);
+            };
+            audioObject.play().catch(e => {
+                // Xử lý lỗi tự động phát (thường gặp trên Chrome)
+                console.error(`Audio playback failed for ${nextFileKey}.mp3:`, e);
+                setAudioQueue(prev => prev.slice(1));
+                setIsSpeaking(false);
+            });
+          } else {
+            // Nếu file không tìm thấy/lỗi tải, bỏ qua sau 0.5s
+            console.warn(`[Audio Missing] Skipping missing file: ${nextFileKey}.mp3`);
+            setTimeout(() => {
+                setAudioQueue(prev => prev.slice(1));
+                setIsSpeaking(false);
+            }, 500);
+          }
+        }
+      }, [audioQueue, isSpeaking, audioCache]);
+
+      // 3. Hàm thêm vào hàng đợi
+      const enqueueAudio = useCallback((files) => {
+        setAudioQueue(prev => [...prev, ...files]);
+      }, []);
+
+      return { enqueueAudio, audioQueue, isSpeaking };
+    };
+
+    // --- UTILITY COMPONENTS ---
+
+    // Component Modal tùy chỉnh (Thay thế alert/confirm)
+    const ConfirmModal = ({ title, message, onConfirm, onCancel, children, confirmText = 'Xác nhận' }) => {
+      return (
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center p-4 z-50 transition-opacity duration-300">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md transform transition-all p-6 border-4 border-yellow-500">
+            <h3 className="text-2xl font-extrabold text-gray-900 dark:text-white mb-4 border-b pb-2">{title}</h3>
+            <p className="text-gray-600 dark:text-gray-300 mb-6">{message}</p>
+            
+            {children}
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={onCancel}
+                className="px-4 py-2 bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-semibold rounded-lg hover:bg-gray-400 transition shadow-md"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={onConfirm}
+                className="px-4 py-2 bg-yellow-500 text-gray-900 font-bold rounded-lg hover:bg-yellow-600 transition transform hover:scale-105 shadow-xl disabled:opacity-50"
+                disabled={!onConfirm} 
+              >
+                {confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- MAIN APP COMPONENT ---
+
+    const App = () => {
+      const [gameState, setGameState] = useState(loadGameState);
+
+      // Trạng thái cục bộ (không lưu vào localStorage)
+      const [isScoring, setIsScoring] = useState(false);
+      const [currentRoundScores, setCurrentRoundScores] = useState({}); // {P1: 0, P2: 0, ...}
+      const [newPlayerName, setNewPlayerName] = useState('');
+      const [newRoundInput, setNewRoundInput] = useState('');
+      const [changePlayerId, setChangePlayerId] = useState(null); // ID vị trí đang thay đổi (Feature 9)
+      const [modal, setModal] = useState(null); // {type, title, message, onConfirm, onCancel, children}
+      const [tempRoundCount, setTempRoundCount] = useState(''); // (Feature 10)
+
+      const { players, maxRounds, history, showHistory } = gameState;
+      const { enqueueAudio, audioQueue, isSpeaking } = useAudio(players);
+      
+      // Hàm cập nhật trạng thái game và lưu vào LocalStorage
+      const updateStateAndSaveLocal = useCallback((updates) => {
+        setGameState(prev => {
+          const newState = { ...prev, ...updates };
+          saveGameState(newState);
+          return newState;
+        });
+      }, []);
+
+      // Lấy tổng điểm cho mỗi người chơi từ lịch sử (Memoized)
+      const getPlayerScores = useMemo(() => {
+        const scores = {};
+        players.forEach(p => scores[p.id] = 0);
+        history.forEach(round => {
+          round.scores.forEach(s => {
+            scores[s.playerId] = (scores[s.playerId] || 0) + s.roundScore;
+          });
+        });
+        return scores;
+      }, [players, history]);
+
+      // Logic phát âm thanh kết thúc game (Feature 6 & 7)
+      const triggerEndGameAudio = useCallback((currentPlayers, scores) => {
+        const finalScores = currentPlayers.map(p => ({
+          ...p,
+          score: scores[p.id] || 0
+        })).sort((a, b) => a.score - b.score); // Sắp xếp từ thấp đến cao (người thua trước)
+        
+        if (finalScores.length < 2) return; 
+
+        const lowestScore = finalScores[0].score;
+        const tiedLowest = finalScores.filter(p => p.score === lowestScore);
+        
+        // Nếu nhiều người hòa điểm thấp nhất (ví dụ: -5, -5, 0, 10) -> KHÔNG phát âm thanh kết thúc
+        if (tiedLowest.length > 1) {
+             console.log("Game ended, but skipping audio due to lowest score tie.");
+             return;
+        }
+
+        const lowest = finalScores[0];
+        const secondLowest = finalScores[1];
+        
+        const audioSequence = ['chiabuon', toUnaccented(lowest.name)];
+        
+        // Chỉ thêm 'va' nếu điểm thấp nhất không bị hòa và có người thấp thứ hai
+        if (lowest.score < secondLowest.score) {
+            audioSequence.push('va', toUnaccented(secondLowest.name));
+        }
+
+        audioSequence.push('dathua');
+        enqueueAudio(audioSequence);
+      }, [enqueueAudio]);
+
+      // Kiểm tra trạng thái kết thúc ván
+      useEffect(() => {
+        if (gameState.gameState === 'PLAYING' && maxRounds && history.length >= maxRounds) {
+          updateStateAndSaveLocal({ gameState: 'FINISHED' });
+          // Phát âm thanh khi game kết thúc tự động
+          setTimeout(() => triggerEndGameAudio(players, getPlayerScores), 1000); 
+        }
+      }, [history.length, maxRounds, gameState.gameState, updateStateAndSaveLocal, players, getPlayerScores, triggerEndGameAudio]);
+
+
+      // --- FEATURE 1: PLAYER SELECTION ---
+      const addPlayer = (name) => {
+        const trimmedName = name.trim();
+        if (!trimmedName || players.length >= MAX_PLAYERS || players.some(p => p.name === trimmedName)) return;
+
+        const newPlayerId = createPlayerId(players.length); 
+        const newPlayer = { id: newPlayerId, name: trimmedName };
+        const newPlayers = [...players, newPlayer];
+        
+        setCurrentRoundScores(prev => ({ ...prev, [newPlayerId]: 0 }));
+        
+        updateStateAndSaveLocal({ 
+          players: newPlayers, 
+          gameState: newPlayers.length === MAX_PLAYERS ? 'SETUP_ROUNDS' : 'SETUP_PLAYERS' 
+        });
+        setNewPlayerName('');
+        
+        enqueueAudio([toUnaccented(trimmedName)]);
+      };
+
+      // --- FEATURE 2: ROUND SELECTION ---
+      const handleSetMaxRounds = (rounds) => {
+        const numRounds = parseInt(rounds, 10);
+        if (isNaN(numRounds) || numRounds <= 0) return;
+        
+        updateStateAndSaveLocal({ maxRounds: numRounds, gameState: 'PLAYING' });
+      };
+      
+      // --- FEATURE 3 & 4: SCORING & AUDIO FEEDBACK ---
+      const startScoring = () => {
+        if (isScoring || changePlayerId !== null) return; 
+        enqueueAudio(['vanmoi']);
+        setIsScoring(true);
+        const initialScores = players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
+        setCurrentRoundScores(initialScores);
+      };
+      
+      const confirmScore = () => {
+        // Kiểm tra xem tất cả người chơi đã có điểm nhập (dù là 0)
+        if (players.some(p => typeof currentRoundScores[p.id] === 'undefined')) {
+             console.error("Missing score input for some players.");
+             return;
+        }
+
+        const roundNumber = history.length + 1;
+        const newRoundScores = players.map(p => ({
+          playerId: p.id,
+          playerName: p.name, 
+          roundScore: currentRoundScores[p.id] || 0
+        }));
+        
+        const newHistory = [...history, { round: roundNumber, scores: newRoundScores }];
+        
+        // Sắp xếp người chơi theo điểm ván vừa ghi (từ cao đến thấp) cho mục đích đọc điểm
+        const rankedScores = newRoundScores
+          .slice()
+          .sort((a, b) => b.roundScore - a.roundScore);
+          
+        const audioSequence = [];
+        const colenFiles = ['colen1', 'colen2', 'colen3'];
+        
+        rankedScores.forEach(scoreEntry => {
+          const nameKey = toUnaccented(scoreEntry.playerName);
+          const score = scoreEntry.roundScore;
+          const absScore = Math.abs(score);
+          const scoreKey = absScore.toString();
+          
+          if (score > 0) {
+            audioSequence.push('dacong', scoreKey, nameKey);
+          } else if (score === 0) {
+            audioSequence.push(nameKey, '0', colenFiles[Math.floor(Math.random() * 3)]);
+          } else if (score < 0) {
+            audioSequence.push('datru', scoreKey, nameKey, colenFiles[Math.floor(Math.random() * 3)]);
+          }
+        });
+
+        enqueueAudio(audioSequence);
+        updateStateAndSaveLocal({ history: newHistory });
+        setIsScoring(false);
+      };
+      
+      // Hàm điều chỉnh điểm ván hiện tại
+      const adjustScore = (playerId, delta) => {
+        if (!isScoring) return;
+        setCurrentRoundScores(prev => ({
+          ...prev,
+          [playerId]: (prev[playerId] || 0) + delta
+        }));
+      };
+      
+      // --- FEATURE 7: EARLY FINISH ---
+      const handleEarlyFinish = () => {
+        enqueueAudio(['kethucsom']);
+        setModal({
+          type: 'FINISH',
+          title: 'Kết Thúc Trò Chơi Sớm',
+          message: `Bạn có chắc chắn muốn kết thúc trò chơi hiện tại (${history.length}/${maxRounds} ván) và xem bảng xếp hạng không?`,
+          onConfirm: () => {
+            setModal(null);
+            updateStateAndSaveLocal({ gameState: 'FINISHED' });
+            triggerEndGameAudio(players, getPlayerScores);
+            enqueueAudio(['confirm']);
+          },
+          onCancel: () => setModal(null)
+        });
+      };
+
+      // --- FEATURE 8: UNDO ---
+      const handleUndo = () => {
+        if (history.length === 0) return;
+        enqueueAudio(['hoantac']);
+        setModal({
+          type: 'UNDO',
+          title: 'Hoàn Tác Ván Vừa Ghi',
+          message: `Bạn có chắc chắn muốn hoàn tác Ván ${history.length} vừa ghi điểm không? Hành động này không thể hoàn tác.`,
+          onConfirm: () => {
+            setModal(null);
+            const newHistory = history.slice(0, -1);
+            
+            let newGameStateValue = gameState.gameState;
+            if (newHistory.length < maxRounds && gameState.gameState === 'FINISHED') {
+                newGameStateValue = 'PLAYING';
+            }
+
+            updateStateAndSaveLocal({ history: newHistory, gameState: newGameStateValue });
+            enqueueAudio(['confirm']);
+          },
+          onCancel: () => setModal(null)
+        });
+      };
+      
+      // --- FEATURE 9: CHANGE PLAYER ---
+      const startChangePlayer = (playerId) => {
+        if (changePlayerId === playerId) {
+            setChangePlayerId(null);
+        } else {
+            enqueueAudio(['thaydoinguoichoi']);
+            setChangePlayerId(playerId);
+        }
+      };
+
+      const saveChangedPlayer = (playerId, newName) => {
+        const trimmedName = newName.trim();
+        if (!trimmedName) return;
+
+        const oldPlayer = players.find(p => p.id === playerId);
+        const oldName = oldPlayer?.name;
+        
+        let hasChanged = oldName !== trimmedName;
+        
+        const newPlayers = players.map(p => {
+          return p.id === playerId ? { ...p, name: trimmedName } : p;
+        });
+
+        if (hasChanged) {
+            enqueueAudio(['confirm']);
+            // KHÔNG CẦN cập nhật lịch sử vì lịch sử lưu tên tại thời điểm ghi điểm.
+            // Nếu người chơi mới thay thế, họ sẽ tiếp tục ghi điểm với ID cũ (P1)
+            // nhưng lịch sử cũ (tên cũ) sẽ vẫn được giữ.
+            updateStateAndSaveLocal({ players: newPlayers });
+            enqueueAudio([toUnaccented(trimmedName)]);
+        }
+        
+        setChangePlayerId(null);
+      };
+      
+      // --- FEATURE 10: SET MAX ROUNDS ---
+      const handleSetMaxRoundsEdit = () => {
+        enqueueAudio(['setlai']);
+        setTempRoundCount(maxRounds ? maxRounds.toString() : '');
+        setModal({
+          type: 'EDIT_ROUNDS',
+          title: 'Set Lại Số Ván Chơi',
+          message: `Nhập tổng số ván chơi mới (Hiện tại: ${maxRounds || 'Chưa đặt'}). Số ván đã chơi (${history.length}) sẽ được giữ lại.`,
+          onConfirm: () => {
+            const newRounds = parseInt(tempRoundCount, 10);
+            if (isNaN(newRounds) || newRounds <= 0) {
+                alert('Số ván nhập vào không hợp lệ.'); // Dùng alert tạm cho lỗi nhập liệu đơn giản
+                return;
+            }
+            
+            setModal(null);
+            
+            let newGameStateValue = 'PLAYING';
+            let message = '';
+            
+            if (newRounds < history.length) {
+                message = `Cảnh báo: Số ván mới (${newRounds}) nhỏ hơn số ván đã chơi (${history.length}). Trò chơi sẽ kết thúc ngay lập tức.`;
+                newGameStateValue = 'FINISHED';
+            } else if (newRounds === history.length) {
+                 newGameStateValue = 'FINISHED';
+            } else if (gameState.gameState === 'FINISHED') {
+                 newGameStateValue = 'PLAYING';
+            }
+            
+            updateStateAndSaveLocal({ maxRounds: newRounds, gameState: newGameStateValue });
+            enqueueAudio(['confirm']);
+            
+            if (newGameStateValue === 'FINISHED') {
+                 triggerEndGameAudio(players, getPlayerScores);
+            }
+            if(message) console.warn(message);
+            setTempRoundCount('');
+          },
+          onCancel: () => { setModal(null); setTempRoundCount(''); },
+          children: (
+            <input
+              type="number"
+              value={tempRoundCount}
+              onChange={(e) => setTempRoundCount(e.target.value)}
+              placeholder="Nhập số ván mới"
+              className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-yellow-500 focus:border-yellow-500 text-gray-900 dark:text-white dark:bg-gray-700"
+              min="1"
+            />
+          )
+        });
+      };
+      
+      // --- FINAL RANKING (Feature 6) ---
+      const finalRankings = useMemo(() => {
+        if (gameState.gameState !== 'FINISHED') return [];
+        
+        return players
+          .map(p => ({
+            ...p,
+            score: getPlayerScores[p.id] || 0
+          }))
+          .sort((a, b) => b.score - a.score);
+      }, [gameState.gameState, players, getPlayerScores]);
+
+      // --- RENDER COMPONENTS ---
+
+      // UI: Thiết lập người chơi (Feature 1)
+      const SetupPlayerUI = () => {
+        const availableForSelection = AVAILABLE_PLAYERS
+          .filter(name => !players.some(p => p.name === name));
+          
+        const isNameSelected = newPlayerName && availableForSelection.includes(newPlayerName);
+        
+        return (
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-2 border-yellow-400">
+            <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">
+                Thêm người chơi ({players.length}/{MAX_PLAYERS})
+            </h3>
+            
+            {players.length < MAX_PLAYERS ? (
+              <>
+                <div className="space-y-3 mb-4">
+                  <select
+                    value={isNameSelected ? newPlayerName : ''}
+                    onChange={(e) => setNewPlayerName(e.target.value)}
+                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-yellow-500 focus:border-yellow-500"
+                  >
+                    <option value="" disabled>Chọn tên có sẵn...</option>
+                    {availableForSelection.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Hoặc nhập tên khác..."
+                    value={!isNameSelected ? newPlayerName : ''}
+                    onFocus={() => { if(isNameSelected) setNewPlayerName(''); }} // Xóa selection nếu muốn nhập
+                    onChange={(e) => setNewPlayerName(e.target.value)}
+                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-yellow-500 focus:border-yellow-500"
+                  />
+                </div>
+                <button
+                  onClick={() => addPlayer(newPlayerName)}
+                  disabled={!newPlayerName.trim() || players.some(p => p.name === newPlayerName.trim())}
+                  className="w-full py-3 bg-yellow-500 text-gray-900 font-bold rounded-lg shadow-md hover:bg-yellow-600 transition disabled:opacity-50"
+                >
+                  Thêm người chơi
+                </button>
+              </>
+            ) : (
+                <p className="text-green-500 font-semibold">Đã chọn đủ {MAX_PLAYERS} người chơi!</p>
+            )}
+          </div>
+        );
+      };
+
+      // UI: Thiết lập số ván (Feature 2)
+      const SetupRoundsUI = () => (
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-2 border-yellow-400 mt-6">
+          <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Chọn tổng số ván chơi</h3>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            {[15, 21, 31].map(r => (
+              <button
+                key={r}
+                onClick={() => handleSetMaxRounds(r)}
+                className="p-3 bg-yellow-100 dark:bg-yellow-700 text-gray-900 dark:text-white font-semibold rounded-lg hover:bg-yellow-200 dark:hover:bg-yellow-600 transition shadow-md"
+              >
+                {r} Ván
+              </button>
+            ))}
+          </div>
+          <div className="flex space-x-2">
+            <input
+              type="number"
+              placeholder="Số ván tùy chọn..."
+              value={newRoundInput}
+              onChange={(e) => setNewRoundInput(e.target.value)}
+              className="flex-grow p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-yellow-500 focus:border-yellow-500"
+              min="1"
+            />
+            <button
+              onClick={() => handleSetMaxRounds(newRoundInput)}
+              disabled={!newRoundInput || parseInt(newRoundInput, 10) <= 0}
+              className="px-4 py-3 bg-yellow-500 text-gray-900 font-bold rounded-lg shadow-md hover:bg-yellow-600 transition disabled:opacity-50"
+            >
+              Set
+            </button>
+          </div>
+        </div>
+      );
+      
+      // UI: Điều khiển điểm cho từng người chơi (Feature 3 & 9)
+      const PlayerScoreControl = ({ player }) => {
+        const currentScore = currentRoundScores[player.id] || 0;
+        
+        // Chế độ thay đổi người chơi (Feature 9)
+        if (changePlayerId === player.id) {
+          const availableNames = AVAILABLE_PLAYERS.filter(name => !players.some(p => p.name === name));
+          const [tempName, setTempName] = useState(player.name);
+          const isCustomName = !AVAILABLE_PLAYERS.includes(tempName);
+          
+          return (
+            <div className="flex flex-col p-4 bg-yellow-100 dark:bg-yellow-800 rounded-xl shadow-inner mt-2 space-y-2">
+              <span className="font-bold text-sm text-gray-900 dark:text-white">Thay thế cho: {player.name}</span>
+              
+              <select
+                value={isCustomName ? '' : tempName}
+                onChange={(e) => setTempName(e.target.value)}
+                className="w-full p-2 border border-gray-400 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              >
+                <option value="" disabled>Chọn tên có sẵn...</option>
+                {[...availableNames].map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+               <input
+                type="text"
+                placeholder="Hoặc nhập tên khác..."
+                value={isCustomName ? tempName : ''}
+                onChange={(e) => setTempName(e.target.value)}
+                className="w-full p-2 border border-gray-400 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+              
+              <div className="flex space-x-2 mt-2">
+                <button
+                  onClick={() => saveChangedPlayer(player.id, tempName)}
+                  disabled={!tempName.trim()}
+                  className="flex-1 py-2 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 transition transform hover:scale-[1.02] disabled:opacity-50"
+                >
+                  Lưu người chơi!
+                </button>
+                <button
+                  onClick={() => setChangePlayerId(null)}
+                  className="py-2 px-4 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 transition"
+                >
+                  Hủy
+                </button>
+              </div>
+            </div>
+          );
+        }
+        
+        // Chế độ ghi điểm (Feature 3)
+        if (isScoring) {
+          return (
+            <div className="flex items-center justify-between p-3 bg-white dark:bg-gray-700 rounded-lg shadow-md border-2 border-yellow-500/50">
+              <span className="font-semibold text-gray-800 dark:text-white w-2/5 truncate">{player.name}</span>
+              <div className="flex items-center space-x-2 w-3/5 justify-end">
+                <button
+                  onClick={() => adjustScore(player.id, -1)}
+                  className="p-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-lg hover:bg-red-600 transition active:scale-95 shadow-md"
+                >
+                  -
+                </button>
+                <span className={`w-12 text-center text-xl font-extrabold transition-colors ${currentScore > 0 ? 'text-green-600' : currentScore < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-300'}`}>
+                  {currentScore > 0 ? `+${currentScore}` : currentScore}
+                </span>
+                <button
+                  onClick={() => adjustScore(player.id, 1)}
+                  className="p-2 bg-green-500 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-lg hover:bg-green-600 transition active:scale-95 shadow-md"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          );
+        }
+        
+        // Chế độ bình thường (hiển thị nút đổi người chơi)
+        return (
+          <div className="flex items-center justify-between p-3 bg-white dark:bg-gray-700 rounded-lg shadow-md">
+            <span className="font-semibold text-gray-800 dark:text-white w-full truncate">{player.name}</span>
+            <button
+                onClick={() => startChangePlayer(player.id)}
+                disabled={isScoring || isSpeaking}
+                className="text-xs text-gray-500 dark:text-gray-400 hover:text-yellow-500 transition ml-2"
+                title="Thay đổi người chơi"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
+                    <path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" />
+                </svg>
+            </button>
+          </div>
+        );
+      };
+
+
+      // --- MAIN RENDER ---
+      const totalRoundsDisplay = maxRounds || '...';
+      
+      return (
+        <div className="mobile-screen bg-gray-100 dark:bg-gray-900 p-4 sm:p-8 font-sans transition-colors duration-300">
+          <div className="max-w-4xl mx-auto">
+            <header className="text-center mb-6 pt-4">
+              <h1 className="text-4xl sm:text-5xl font-extrabold mb-2">
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-500">
+                    Score Master Pro
+                </span>
+                {isSpeaking && (
+                    <span className="ml-3 inline-block loading-animation w-3 h-3 bg-yellow-500 rounded-full"></span>
+                )}
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400 text-lg font-medium">
+                Ván {history.length + 1} / {totalRoundsDisplay}
+              </p>
+            </header>
+
+            {/* --- SETUP STATES (Feature 1 & 2) --- */}
+            {gameState.gameState.includes('SETUP') && (
+              <div className="space-y-6">
+                <SetupPlayerUI />
+                {players.length > 0 && (
+                  <div className="bg-gray-200 dark:bg-gray-800 p-4 rounded-xl shadow-inner border border-gray-300 dark:border-gray-700">
+                    <h4 className="text-lg font-semibold mb-2 text-gray-800 dark:text-white">Người chơi hiện tại:</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {players.map(p => (
+                        <span key={p.id} className="px-3 py-1 bg-yellow-500 text-gray-900 font-medium rounded-full text-sm shadow-md">
+                          {p.name} ({p.id})
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {players.length === MAX_PLAYERS && gameState.gameState === 'SETUP_ROUNDS' && <SetupRoundsUI />}
+              </div>
+            )}
+
+            {/* --- PLAYING STATE --- */}
+            {gameState.gameState === 'PLAYING' && (
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
+                
+                {/* Cột 1: Controls & Player List (Mobile: Top) */}
+                <div className="lg:col-span-1 space-y-6">
+                  
+                  {/* Điều khiển điểm (Feature 3) */}
+                  <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-2xl border-t-4 border-yellow-500">
+                    <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Danh sách người chơi</h3>
+                    <div className="space-y-3">
+                      {players.map(p => (
+                        <PlayerScoreControl key={p.id} player={p} />
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Nút điều khiển (Feature 3, 7, 8, 10) */}
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <button
+                      onClick={isScoring ? confirmScore : startScoring}
+                      disabled={isSpeaking || changePlayerId !== null || (isScoring && players.some(p => typeof currentRoundScores[p.id] === 'undefined'))}
+                      className={`w-full py-4 text-lg font-bold rounded-xl transition transform hover:scale-[1.02] shadow-xl mb-3 ${
+                        isScoring ? 'bg-green-500 text-white hover:bg-green-600' : 'bg-yellow-500 text-gray-900 hover:bg-yellow-600'
+                      } disabled:opacity-50`}
+                    >
+                      {isScoring ? 'Xác nhận ghi điểm!' : `Ghi điểm ván mới (${history.length + 1})`}
+                    </button>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={handleUndo} // Feature 8
+                        disabled={isScoring || history.length === 0 || isSpeaking || changePlayerId !== null}
+                        className="py-3 bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-semibold rounded-lg hover:bg-gray-400 dark:hover:bg-gray-600 transition disabled:opacity-50"
+                      >
+                        ↩️ Hoàn tác
+                      </button>
+                      <button
+                        onClick={handleSetMaxRoundsEdit} // Feature 10
+                        disabled={isScoring || isSpeaking || changePlayerId !== null}
+                        className="py-3 bg-blue-300 dark:bg-blue-700 text-gray-800 dark:text-gray-200 font-semibold rounded-lg hover:bg-blue-400 dark:hover:bg-blue-600 transition disabled:opacity-50"
+                      >
+                        🔢 Set lại ván
+                      </button>
+                    </div>
+                    
+                    <button
+                        onClick={handleEarlyFinish} // Feature 7
+                        disabled={isScoring || isSpeaking || changePlayerId !== null}
+                        className="w-full mt-3 py-3 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition disabled:opacity-50"
+                    >
+                        ⏹️ Kết thúc trò chơi!
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cột 2/3: Lịch sử (Feature 5) */}
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg border-l-4 border-gray-300 dark:border-gray-700">
+                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Lịch Sử Điểm</h3>
+                       <button
+                          onClick={() => updateStateAndSaveLocal({ showHistory: !showHistory })}
+                          className="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                      >
+                          {showHistory ? 'Ẩn Lịch sử' : 'Hiện Lịch sử'}
+                      </button>
+                  </div>
+                  
+                  {showHistory && (
+                      <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg history-container">
+                        {history.length === 0 ? (
+                            <p className="text-gray-500 text-center py-4">Chưa có ván nào được ghi điểm.</p>
+                        ) : (
+                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                              <thead className="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-300 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10">Ván</th>
+                                  {players.map(p => (
+                                    <th key={p.id} className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-300 whitespace-nowrap">
+                                      {p.name}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                {history.slice().reverse().map((round, index) => (
+                                  <tr key={round.round} className={index % 2 === 0 ? 'bg-gray-50 dark:bg-gray-900' : 'bg-white dark:bg-gray-800'}>
+                                    <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-inherit z-10">
+                                      {round.round}
+                                    </td>
+                                    {players.map(p => {
+                                      // Tìm điểm theo player ID, vì tên có thể đã thay đổi
+                                      const scoreEntry = round.scores.find(s => s.playerId === p.id);
+                                      const score = scoreEntry ? scoreEntry.roundScore : 0;
+                                      return (
+                                        <td key={p.id} className={`px-3 py-2 whitespace-nowrap text-sm font-bold ${score > 0 ? 'text-green-600' : score < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                                          {score > 0 ? `+${score}` : score}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                        )}
+                      </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* --- FINISHED STATE (Feature 6) --- */}
+            {gameState.gameState === 'FINISHED' && (
+              <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl text-center border-4 border-red-500/80">
+                <h3 className="text-4xl font-extrabold text-red-500 mb-6">TRÒ CHƠI KẾT THÚC! 🎉</h3>
+                <h4 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Bảng Xếp Hạng Tổng Điểm</h4>
+                
+                <ol className="max-w-md mx-auto space-y-3">
+                  {finalRankings.map((p, index) => (
+                    <li
+                      key={p.id}
+                      className={`flex justify-between items-center p-4 rounded-xl shadow-md transition ${
+                        index === 0 ? 'bg-yellow-100 dark:bg-yellow-800 border-2 border-yellow-500 transform scale-[1.03] shadow-2xl' : 'bg-gray-50 dark:bg-gray-700'
+                      }`}
+                    >
+                      <span className={`text-2xl font-extrabold w-10 ${index === 0 ? 'text-yellow-700' : 'text-gray-500'}`}>{index + 1}.</span>
+                      <span className="text-xl font-semibold flex-1 text-left text-gray-900 dark:text-white">{p.name} ({p.id})</span>
+                      <span className={`text-3xl font-bold ${p.score >= 0 ? 'text-green-600' : 'text-red-600'}`}>{p.score}</span>
+                    </li>
+                  ))}
+                </ol>
+                
+                <button
+                    onClick={() => updateStateAndSaveLocal(initialGameState)} // Reset toàn bộ
+                    className="mt-8 py-3 px-6 bg-yellow-500 text-gray-900 font-bold rounded-lg shadow-md hover:bg-yellow-600 transition transform hover:scale-105"
+                >
+                    Bắt đầu trò chơi mới
+                </button>
+              </div>
+            )}
+          </div>
+          
+          {/* Custom Modal */}
+          {modal && (
+            <ConfirmModal
+              title={modal.title}
+              message={modal.message}
+              onConfirm={modal.onConfirm}
+              onCancel={modal.onCancel}
+              confirmText={modal.confirmText}
+            >
+              {modal.children}
+            </ConfirmModal>
+          )}
+        </div>
+      );
+    }
+
+    // Khởi tạo và render ứng dụng
+    const container = document.getElementById('root');
+    const root = createRoot(container);
+    root.render(<App />);
+  </script>
+</body>
+</html>

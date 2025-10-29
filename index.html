@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ứng Dụng Ghi Điểm Trò Chơi</title>
     
-    <!-- 1. Tailwind CSS CDN & Config -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -22,12 +21,10 @@
         }
     </script>
 
-    <!-- 2. React, ReactDOM, and Babel Standalone CDNs -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- 3. Custom Styles for Animations -->
     <style>
         @keyframes bounce-in {
             0%, 20%, 40%, 60%, 80%, 100% {
@@ -41,6 +38,13 @@
         .animate-bounce-in {
             animation: bounce-in 0.8s;
         }
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fade-in 0.3s ease-out;
+        }
         .animate-pulse-slow {
             animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
@@ -53,63 +57,74 @@
         const { useState, useEffect, useRef, useCallback, useMemo } = React;
         const MAX_PLAYERS = 4;
         
-        // --- Cấu hình Audio (Sử dụng 1 âm thanh mẫu để mô phỏng) ---
-        // Lưu ý: Do không thể tải file cục bộ, tôi dùng 1 file MP3 công khai ngắn (Success Chime) 
-        // và dùng logic queue để mô phỏng trình tự phát âm thanh.
-        const BEEP_URL = 'https://s-us-west-2.amazonaws.com/s.cdpn.io/3/success.mp3';
+        // Cấu hình đường dẫn cho âm thanh cục bộ
+        const AUDIO_BASE_PATH = 'audio/';
+        
+        /* * DANH SÁCH FILE AUDIO CẦN CÓ TRONG THƯ MỤC 'audio/':
+        * 1. Hệ thống: vanmoi.mp3, dacong.mp3, datru.mp3, colen.mp3, chiabuon.mp3, va.mp3, dathua.mp3
+        * 2. Số điểm: 0.mp3, 1.mp3, 2.mp3, ... (cho các số điểm thường gặp)
+        * 3. Tên người chơi: binhdang.mp3, dunghoang.mp3, dungnguyen.mp3, duphan.mp3, dongle.mp3, v.v.
+        */
 
         // Danh sách tên người chơi có sẵn
         const PRESET_PLAYERS = ["Bình Đặng", "Dũng Hoàng", "Dũng Nguyễn", "Dự Phan", "Đông Lê"];
         const PRESET_ROUNDS = [15, 21, 31];
 
-        // Mocks for sound mapping
-        const SOUND_MOCK = {
-            vanmoi: 'Ván mới!',
-            dacong: 'Đã cộng',
-            datru: 'Đã trừ',
-            colen: 'Cố lên!',
-            chiabuon: 'Chia buồn',
-            va: 'và',
-            dathua: 'đã thua',
-            success: 'thành công'
-        };
-
         // --- 1. Custom Hooks & Utilities ---
+
+        // Hàm chuẩn hóa tên người chơi thành tên file không dấu, không khoảng trắng, chữ thường
+        const normalizeName = (name) => {
+            // Loại bỏ dấu tiếng Việt (NFD and combining marks regex)
+            return name
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, "") 
+                .toLowerCase()
+                .replace(/\s+/g, ''); // Loại bỏ khoảng trắng
+        };
 
         // Custom Hook: Xử lý Audio theo hàng đợi (Đảm bảo không bị chồng chéo)
         const useAudioQueue = () => {
-            const audioQueue = useRef([]);
-            const isPlaying = useRef(false);
+            const audioQueue = useRef([]); // Hàng đợi lưu trữ các URL file audio
+            const isPlaying = useRef(false); // Cờ trạng thái: Đang phát hay không?
 
             const playNext = useCallback(() => {
+                // Chỉ phát nếu còn file trong hàng đợi VÀ hiện tại KHÔNG có file nào đang phát
                 if (audioQueue.current.length > 0 && !isPlaying.current) {
                     isPlaying.current = true;
-                    const { url, onFinished } = audioQueue.current.shift();
+                    const url = audioQueue.current.shift(); // Lấy file đầu tiên ra khỏi hàng đợi
                     
                     const audio = new Audio(url);
+                    audio.volume = 0.8; 
+                    
+                    // --- Đảm bảo tính tuần tự: Khi file kết thúc, gọi playNext() ---
                     audio.onended = () => {
-                        isPlaying.current = false;
-                        if (onFinished) onFinished();
-                        playNext();
+                        isPlaying.current = false; // Mở khóa
+                        playNext(); // Gọi lại để phát file tiếp theo (nếu có)
                     };
+                    
+                    // Xử lý lỗi (ví dụ: không tìm thấy file)
                     audio.onerror = () => {
-                         // Fallback for errors (e.g., sound URL issue)
-                        console.error("Audio playback error:", url);
-                        isPlaying.current = false;
-                        if (onFinished) onFinished();
-                        playNext();
-                    }
+                        console.error("Audio playback error (File not found?):", url);
+                        isPlaying.current = false; // Mở khóa
+                        playNext(); // Bỏ qua file lỗi và tiếp tục phát file tiếp theo
+                    };
+
+                    // Bắt đầu phát (Xử lý lỗi Autoplay Policy)
                     audio.play().catch(e => {
-                        console.warn("Autoplay was prevented:", e);
+                        console.warn("Autoplay was prevented (User interaction needed or file missing):", url, e);
                         isPlaying.current = false;
-                        if (onFinished) onFinished();
                         playNext();
                     });
                 }
             }, []);
 
-            const addToQueue = useCallback((urls) => {
-                urls.forEach(url => audioQueue.current.push({ url: BEEP_URL, onFinished: () => console.log(`[Audio Mock]: ${SOUND_MOCK[url] || url}`) }));
+            // Thêm một hoặc nhiều tên file vào hàng đợi
+            const addToQueue = useCallback((soundNames) => {
+                soundNames.forEach(name => {
+                    const fullPath = `${AUDIO_BASE_PATH}${name}.mp3`;
+                    audioQueue.current.push(fullPath);
+                });
+                
+                // Nếu không có file nào đang phát, bắt đầu chu trình phát
                 if (!isPlaying.current) {
                     playNext();
                 }
@@ -117,6 +132,7 @@
 
             return addToQueue;
         };
+
 
         // Custom Hook: Quản lý State với LocalStorage
         const useLocalStorageState = (key, defaultValue) => {
@@ -190,7 +206,7 @@
             const [showHistory, setShowHistory] = useState(false);
             const [isScoringMode, setIsScoringMode] = useState(false);
             const [newPlayerName, setNewPlayerName] = useState('');
-            const [roundScoreInputs, setRoundScoreInputs] = useState({});
+            const [roundScoreInputs, setRoundScoreInputs] = useLocalStorageState('roundScoreInputs', {}); // Giữ lại giá trị khi refresh
             const [modal, setModal] = useState({ isOpen: false, type: null, data: null });
             const [newMaxRoundsInput, setNewMaxRoundsInput] = useState(15);
             
@@ -216,21 +232,28 @@
                 scoreDetails.sort((a, b) => b.score - a.score);
 
                 let audioSequence = [];
+                
+                // Bắt đầu bằng âm thanh "Ván mới!"
+                audioSequence.push('vanmoi'); 
 
                 scoreDetails.forEach(detail => {
                     const absScore = Math.abs(detail.score);
-                    const nameFile = detail.name.replace(/\s/g, '').toLowerCase(); // Mock: Tên người chơi
-                    const scoreFile = absScore.toString(); // Mock: Số điểm
+                    const nameFile = normalizeName(detail.name); // Tên người chơi chuẩn hóa
+                    const scoreStr = absScore.toString(); // Số điểm (ví dụ: '5', '10')
+
+                    // Phát tên người chơi trước
+                    audioSequence.push(nameFile);
 
                     if (detail.score > 0) {
-                        // Điểm dương: dacong.mp3 + âm thanh số điểm + tennguoichoi.mp3
-                        audioSequence.push('dacong', scoreFile, nameFile);
+                        // Điểm dương: dacong.mp3 + âm thanh số điểm
+                        audioSequence.push('dacong', scoreStr);
                     } else if (detail.score < 0) {
-                        // Điểm âm: datru.mp3 + số điểm bị âm + tennguoichoi.mp3 + colen.mp3
-                        audioSequence.push('datru', scoreFile, nameFile, 'colen');
+                        // Điểm âm: datru.mp3 + số điểm bị âm + colen.mp3
+                        audioSequence.push('datru', scoreStr);
+                        audioSequence.push('colen');
                     } else {
-                        // Điểm bằng 0: tennguoichoi.mp3 + 0.mp3 + colen.mp3
-                        audioSequence.push(nameFile, '0', 'colen');
+                        // Điểm bằng 0
+                        audioSequence.push('0');
                     }
                 });
                 
@@ -245,11 +268,15 @@
                 const lastPlayer = sortedPlayers[sortedPlayers.length - 1];
                 const secondLastPlayer = sortedPlayers[sortedPlayers.length - 2];
 
+                const lastPlayerName = normalizeName(lastPlayer.name);
+                const secondLastPlayerName = normalizeName(secondLastPlayer.name);
+
+                // Format: chiabuon.mp3 + Tên người 1 + va.mp3 + Tên người 2 + dathua.mp3
                 const audioSequence = [
                     'chiabuon', 
-                    lastPlayer.name.replace(/\s/g, '').toLowerCase(), // Tên người ít điểm nhất
+                    lastPlayerName, 
                     'va', 
-                    secondLastPlayer.name.replace(/\s/g, '').toLowerCase(), // Tên người ít điểm tiếp theo
+                    secondLastPlayerName, 
                     'dathua'
                 ];
                 
@@ -263,6 +290,14 @@
                     playGameOverAudio(playerScores);
                 }
             }, [history, maxRounds, gameState, playerScores]);
+            
+            // Khởi tạo/Cập nhật input scores khi players thay đổi (sau khi load state từ localStorage)
+            useEffect(() => {
+                 if (players.length > 0 && gameState === 'playing' && Object.keys(roundScoreInputs).length === 0) {
+                    const initialInputs = players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
+                    setRoundScoreInputs(initialInputs);
+                }
+            }, [players, gameState, roundScoreInputs]);
 
 
             // --- 7. Hoàn tác (Undo) ---
@@ -305,7 +340,19 @@
 
             const handleAddNewPlayer = () => {
                 if (newPlayerName && players.length < MAX_PLAYERS) {
-                    const newPlayer = { id: generateId(), name: newPlayerName };
+                    // Kiểm tra trùng tên (Không bắt buộc theo yêu cầu, nhưng nên có)
+                    if (players.some(p => p.name.toLowerCase() === newPlayerName.trim().toLowerCase())) {
+                         setModal({
+                            isOpen: true,
+                            type: 'info',
+                            data: { title: 'Thông báo', message: `Người chơi '${newPlayerName}' đã tồn tại.` }
+                        });
+                        return;
+                    }
+                    
+                    const normalizedName = normalizeName(newPlayerName);
+                    // Dùng tên chuẩn hóa làm ID nếu chưa tồn tại
+                    const newPlayer = { id: normalizedName + generateId(), name: newPlayerName.trim() }; // Thêm ID ngẫu nhiên để tránh trùng với PRESET
                     setPlayers([...players, newPlayer]);
                     setNewPlayerName('');
                 } else if (players.length >= MAX_PLAYERS) {
@@ -327,7 +374,7 @@
                     return;
                 }
                 setGameState('playing');
-                // Khởi tạo các input điểm ván = 0
+                // Khởi tạo các input điểm ván = 0 (dựa trên players mới)
                 const initialInputs = players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
                 setRoundScoreInputs(initialInputs);
             };
@@ -351,20 +398,21 @@
 
             const handleScoreChange = (playerId, value) => {
                 const numValue = value === '' ? '' : parseInt(value);
-                setRoundScoreInputs(prev => ({ ...prev, [playerId]: isNaN(numValue) ? '' : numValue }));
+                // Giữ lại giá trị string rỗng nếu user xóa hết
+                setRoundScoreInputs(prev => ({ ...prev, [playerId]: isNaN(numValue) ? value : numValue }));
             };
 
             const handleConfirmScore = () => {
                 const newRoundScores = {};
-                let valid = true;
 
-                // Chuẩn hóa và kiểm tra điểm
+                // Chuẩn hóa điểm
                 playerScores.forEach(p => {
                     const score = roundScoreInputs[p.id];
+                    // Nếu giá trị là '' (string rỗng) hoặc null, NaN thì gán 0
                     if (score === '' || score === null || isNaN(score)) {
-                        newRoundScores[p.id] = 0; // Mặc định 0 nếu để trống
+                        newRoundScores[p.id] = 0; 
                     } else {
-                        newRoundScores[p.id] = score;
+                        newRoundScores[p.id] = parseInt(score); // Đảm bảo là số nguyên
                     }
                 });
 
@@ -431,7 +479,7 @@
                             <div>
                                 <p className="text-gray-700 mb-4">
                                     Ván đã chơi: <span className="font-bold text-primary">{modal.data.playedRounds}</span>.
-                                    Số ván tối thiểu phải là <span className="font-bold text-primary">{modal.data.playedRounds + 1}</span>.
+                                    Số ván tối thiểu phải là <span className="font-bold text-primary">{modal.data.playedRounds}</span>.
                                 </p>
                                 <label className="block text-sm font-medium text-gray-700">Nhập số ván mới:</label>
                                 <input
@@ -450,27 +498,25 @@
 
             // --- Render các Stage ---
             
-            // Stage 0: Setup
+            // Stage 0: Setup (Đã tối ưu giao diện)
             const renderSetup = () => (
-                <div className="p-6">
-                    <h2 className="text-2xl font-bold text-primary mb-6 text-center">⚙️ Cấu Hình Trò Chơi</h2>
+                <div className="p-4 sm:p-6 pb-2">
+                    <h2 className="text-xl font-bold text-primary mb-4 text-center">⚙️ Cấu Hình Trò Chơi</h2>
 
-                    {/* Chọn Số Ván */}
-                    <div className="mb-8 p-4 bg-white rounded-lg shadow">
-                        <h3 className="text-lg font-semibold mb-3 text-gray-700">1. Chọn Số Ván Chơi</h3>
-                        <div className="flex flex-wrap gap-2 mb-3">
+                    {/* Chọn Số Ván (Cùng hàng) */}
+                    <div className="mb-4 p-3 bg-white rounded-lg shadow-sm border border-gray-200">
+                        <h3 className="text-md font-semibold mb-2 text-gray-700">1. Chọn Số Ván Chơi (Hiện tại: {maxRounds})</h3>
+                        <div className="flex flex-wrap gap-2 mb-2">
                             {PRESET_ROUNDS.map(r => (
                                 <button
                                     key={r}
                                     onClick={() => setMaxRounds(r)}
-                                    className={`px-4 py-2 text-sm font-medium rounded-full transition ${maxRounds === r ? 'bg-primary text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                                    className={`px-3 py-1 text-sm font-medium rounded-full transition ${maxRounds === r ? 'bg-primary text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
                                 >
                                     {r} Ván
                                 </button>
                             ))}
                         </div>
-                        
-                        <label className="block text-sm font-medium text-gray-700 mt-4">Hoặc nhập số ván tùy chọn (Hiện tại: {maxRounds})</label>
                         <input
                             type="number"
                             min="1"
@@ -479,24 +525,27 @@
                                 const val = parseInt(e.target.value);
                                 setMaxRounds(val > 0 ? val : 1);
                             }}
-                            className="w-full p-2 border border-gray-300 rounded-lg mt-1 focus:ring-secondary focus:border-secondary"
+                            className="w-full p-2 border border-gray-300 rounded-lg text-sm mt-1 focus:ring-secondary focus:border-secondary"
                         />
                     </div>
                     
                     {/* Chọn Người Chơi */}
-                    <div className="mb-8 p-4 bg-white rounded-lg shadow">
-                        <h3 className="text-lg font-semibold mb-3 text-gray-700">2. Chọn Người Chơi (Tối đa {MAX_PLAYERS} người)</h3>
+                    <div className="mb-4 p-3 bg-white rounded-lg shadow-sm border border-gray-200">
+                        <h3 className="text-md font-semibold mb-2 text-gray-700">2. Chọn Người Chơi</h3>
                         
                         {/* Danh sách chọn sẵn */}
-                        <div className="flex flex-wrap gap-2 border-b pb-4 mb-4">
+                        <div className="flex flex-wrap gap-2 border-b pb-3 mb-3">
                             {PRESET_PLAYERS.map(name => {
-                                const player = { id: name, name: name };
-                                const isSelected = players.some(p => p.id === name);
+                                // Sử dụng tên chuẩn hóa làm ID
+                                const id = normalizeName(name);
+                                // Tạo ID duy nhất cho người chơi preset
+                                const player = { id: id, name: name }; 
+                                const isSelected = players.some(p => p.id === id);
                                 return (
                                     <button
                                         key={name}
                                         onClick={() => handlePlayerToggle(player)}
-                                        className={`px-3 py-1 text-sm rounded-full transition ${isSelected ? 'bg-secondary text-white font-semibold shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'} disabled:opacity-50`}
+                                        className={`px-3 py-1 text-sm rounded-full transition ${isSelected ? 'bg-secondary text-white font-semibold shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'} disabled:opacity-50`}
                                         disabled={!isSelected && players.length >= MAX_PLAYERS}
                                     >
                                         {name} {isSelected ? '✅' : ''}
@@ -512,26 +561,26 @@
                                 value={newPlayerName}
                                 onChange={(e) => setNewPlayerName(e.target.value)}
                                 placeholder="Tên người chơi mới..."
-                                className="flex-grow p-2 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary"
+                                className="flex-grow p-2 text-sm border border-gray-300 rounded-lg focus:ring-primary focus:border-primary"
                                 disabled={players.length >= MAX_PLAYERS}
                             />
                             <button
                                 onClick={handleAddNewPlayer}
-                                className="p-2 bg-primary text-white rounded-lg font-semibold hover:bg-indigo-700 transition disabled:bg-gray-400"
-                                disabled={!newPlayerName || players.length >= MAX_PLAYERS}
+                                className="p-2 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-indigo-700 transition disabled:bg-gray-400"
+                                disabled={!newPlayerName.trim() || players.length >= MAX_PLAYERS}
                             >
                                 Thêm
                             </button>
                         </div>
-                        {players.length >= MAX_PLAYERS && <p className="text-sm text-danger mt-1">Đã đạt tối đa {MAX_PLAYERS} người chơi.</p>}
+                        
                     </div>
 
                     {/* Danh sách người chơi đã chọn */}
-                    <div className="mb-8 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
-                        <h3 className="text-lg font-semibold text-primary mb-2">Người chơi hiện tại:</h3>
+                    <div className="mb-4 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                        <h3 className="text-md font-semibold text-primary mb-2">Người chơi đã chọn ({players.length}/{MAX_PLAYERS}):</h3>
                         <div className="flex flex-wrap gap-2">
                             {players.map(p => (
-                                <span key={p.id} className="bg-primary text-white text-sm px-3 py-1 rounded-full flex items-center">
+                                <span key={p.id} className="bg-primary text-white text-xs px-3 py-1 rounded-full flex items-center">
                                     {p.name}
                                     <button 
                                         onClick={() => handlePlayerToggle(p)}
@@ -542,61 +591,58 @@
                                 </span>
                             ))}
                         </div>
-                        {players.length === 0 && <p className="text-sm text-gray-500 italic">Chưa có người chơi nào được chọn.</p>}
+                        {players.length === 0 && <p className="text-sm text-gray-500 italic mt-2">Chưa có người chơi nào được chọn.</p>}
                     </div>
 
                     {/* Nút Bắt đầu */}
                     <button
                         onClick={handleStartGame}
                         disabled={players.length < 2}
-                        className="w-full py-3 bg-secondary text-white font-bold text-xl rounded-xl shadow-lg hover:bg-green-600 transition disabled:bg-gray-400"
+                        className="w-full py-3 bg-secondary text-white font-bold text-lg rounded-xl shadow-lg hover:bg-green-600 transition disabled:bg-gray-400"
                     >
                         {players.length < 2 ? 'Cần 2 người chơi để bắt đầu' : `BẮT ĐẦU TRÒ CHƠI (${maxRounds} VÁN)`}
                     </button>
                 </div>
             );
 
-            // Stage 1: Playing
+            // Stage 1: Playing (Đã tối ưu giao diện)
             const renderPlaying = () => (
                 <div className="p-4 sm:p-6">
                     <h2 className="text-xl sm:text-2xl font-bold text-primary mb-4 text-center">
                         VÁN {history.length + 1} / {maxRounds}
                     </h2>
                     
-                    {/* Bảng tổng điểm hiện tại (Đã loại bỏ) */}
-                    
-                    {/* Vùng Ghi Điểm */}
-                    <div className="mb-4">
-                        <button
-                            onClick={handleNewScoreClick}
-                            className={`w-full py-3 font-bold text-white rounded-xl shadow-lg transition duration-300 transform hover:scale-[1.01] ${isScoringMode ? 'bg-warning hover:bg-amber-600 animate-pulse-slow' : 'bg-primary hover:bg-indigo-700'}`}
-                        >
-                            {isScoringMode ? 'XÁC NHẬN GHI ĐIỂM VÁN NÀY' : 'GHI ĐIỂM VÁN MỚI'}
-                        </button>
-
+                    {/* Vùng Ghi Điểm (Đảo vị trí) */}
+                    <div className="mb-4 flex flex-col space-y-4">
+                        
                         {isScoringMode && (
-                            <div className="mt-4 p-4 bg-indigo-50 rounded-xl shadow border border-indigo-200 animate-fade-in">
+                            // Hiện vùng nhập điểm ở trên nút xác nhận
+                            <div className="p-4 bg-indigo-50 rounded-xl shadow border border-indigo-200 animate-fade-in order-1">
                                 <h4 className="font-semibold text-primary mb-3">Nhập điểm ván {history.length + 1}:</h4>
                                 {playerScores.map(p => (
                                     <div key={p.id} className="flex items-center space-x-2 mb-3">
-                                        <span className="w-1/3 text-gray-700 truncate">{p.name}:</span>
+                                        <span className="w-1/3 text-gray-700 truncate font-medium">{p.name}:</span>
                                         <div className="flex w-2/3 space-x-1">
+                                            {/* Nút Giảm */}
                                             <button 
-                                                onClick={() => handleScoreChange(p.id, (roundScoreInputs[p.id] || 0) - 1)}
-                                                className="p-2 bg-danger text-white rounded-lg hover:bg-red-600 font-bold"
+                                                onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) - 1)}
+                                                className="p-2 bg-danger text-white rounded-lg hover:bg-red-600 font-bold text-base w-1/4 flex-shrink-0"
                                             >
                                                 -
                                             </button>
+                                            {/* Input Điểm */}
                                             <input
                                                 type="number"
+                                                // Hiển thị '0' nếu giá trị là số 0, nếu là string rỗng (từ input) thì để rỗng
                                                 value={roundScoreInputs[p.id] === 0 && roundScoreInputs[p.id] !== '' ? '0' : roundScoreInputs[p.id]}
                                                 onChange={(e) => handleScoreChange(p.id, e.target.value)}
                                                 className="flex-grow p-2 border border-gray-300 rounded-lg text-center font-mono"
                                                 placeholder="Điểm..."
                                             />
+                                            {/* Nút Tăng (Đã sửa layout) */}
                                             <button 
-                                                onClick={() => handleScoreChange(p.id, (roundScoreInputs[p.id] || 0) + 1)}
-                                                className="p-2 bg-secondary text-white rounded-lg hover:bg-green-600 font-bold"
+                                                onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) + 1)}
+                                                className="p-2 bg-secondary text-white rounded-lg hover:bg-green-600 font-bold text-base w-1/4 flex-shrink-0"
                                             >
                                                 +
                                             </button>
@@ -605,6 +651,32 @@
                                 ))}
                             </div>
                         )}
+                        
+                        {/* Nút Ghi/Xác nhận điểm (Đã đổi thứ tự) */}
+                         <button
+                            onClick={handleNewScoreClick}
+                            className={`w-full py-3 font-bold text-white rounded-xl shadow-lg transition duration-300 transform hover:scale-[1.01] order-2 ${isScoringMode ? 'bg-warning hover:bg-amber-600 animate-pulse-slow' : 'bg-primary hover:bg-indigo-700'}`}
+                        >
+                            {isScoringMode ? 'XÁC NHẬN GHI ĐIỂM VÁN NÀY' : 'GHI ĐIỂM VÁN MỚI'}
+                        </button>
+                    </div>
+                    
+                    {/* Bảng Xếp Hạng Hiện Tại (Không cần thay đổi) */}
+                    <div className="bg-white p-4 rounded-xl shadow-lg mb-4">
+                        <h3 className="text-lg font-bold text-gray-700 mb-3">Tổng Điểm Hiện Tại</h3>
+                        {playerScores.map((p, index) => (
+                            <div 
+                                key={p.id} 
+                                className={`flex justify-between items-center py-2 px-3 my-1 rounded-lg transition ${index === 0 ? 'bg-yellow-50 border-l-4 border-warning' : 'border-b'}`}
+                            >
+                                <span className={`font-semibold ${index === 0 ? 'text-warning' : 'text-gray-700'}`}>
+                                    {index + 1}. {p.name}
+                                </span>
+                                <span className={`text-xl font-extrabold ${p.totalScore >= 0 ? 'text-secondary' : 'text-danger'}`}>
+                                    {p.totalScore}
+                                </span>
+                            </div>
+                        ))}
                     </div>
                     
                     {/* Các nút chức năng */}
@@ -612,27 +684,28 @@
                          <button
                             onClick={handleUndo}
                             disabled={history.length === 0 || isScoringMode}
-                            className="flex-1 py-2 bg-warning text-white font-semibold rounded-lg hover:bg-amber-600 transition disabled:bg-gray-400"
+                            className="flex-1 py-2 bg-warning text-white font-semibold rounded-lg hover:bg-amber-600 transition disabled:bg-gray-400 text-sm"
                         >
                             ↩️ Hoàn Tác
                         </button>
                         <button
                             onClick={handleSetRoundsClick}
                             disabled={isScoringMode}
-                            className="flex-1 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition disabled:bg-gray-400"
+                            className="flex-1 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition disabled:bg-gray-400 text-sm"
                         >
                             🔁 Set Ván
                         </button>
+                        <button
+                            onClick={() => setGameState('game_over')}
+                            disabled={isScoringMode}
+                            className="flex-1 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition disabled:bg-gray-400 text-sm"
+                        >
+                            🛑 Kết Thúc
+                        </button>
                     </div>
-                    <button
-                        onClick={() => setGameState('game_over')}
-                        disabled={isScoringMode}
-                        className="w-full py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition disabled:bg-gray-400 mb-4"
-                    >
-                        🛑 Kết Thúc Ngay
-                    </button>
                     
-                    {/* Lịch sử điểm (Bảng) */}
+                    
+                    {/* Lịch sử điểm (Đã tối ưu cuộn ngang) */}
                     <div className="bg-white p-4 rounded-xl shadow-lg">
                         <button 
                             onClick={() => setShowHistory(prev => !prev)}
@@ -643,23 +716,32 @@
                         {showHistory && (
                             <div className="overflow-x-auto mt-2 max-h-64">
                                 <table className="min-w-full divide-y divide-gray-200">
-                                    <thead className="bg-gray-50 sticky top-0">
+                                    <thead className="bg-gray-50 sticky left-0 z-10">
                                         <tr>
-                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Ván</th>
-                                            {players.map(p => (
-                                                <th key={p.id} className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase truncate" title={p.name}>{p.name}</th>
+                                            {/* Cột Tên Người Chơi (Fixed/Sticky) */}
+                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 shadow-sm">Người chơi</th>
+                                            {/* Cột Điểm các Ván (Cuộn) */}
+                                            {[...Array(history.length)].map((_, index) => (
+                                                <th key={index} className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase min-w-[50px]">Ván {history.length - index}</th>
                                             ))}
                                         </tr>
                                     </thead>
                                     <tbody className="bg-white divide-y divide-gray-200">
-                                        {[...history].reverse().map(entry => (
-                                            <tr key={entry.round}>
-                                                <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{entry.round}</td>
-                                                {players.map(p => {
+                                        {players.map(p => (
+                                            <tr key={p.id}>
+                                                {/* Dữ liệu Tên Người Chơi (Fixed/Sticky) */}
+                                                <td 
+                                                    className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white shadow-sm truncate" 
+                                                    title={p.name}
+                                                >
+                                                    {p.name}
+                                                </td>
+                                                {/* Dữ liệu Điểm các Ván (Cuộn) - Hiển thị từ ván mới nhất về cũ nhất */}
+                                                {[...history].reverse().map(entry => {
                                                     const score = entry.scores[p.id] || 0;
                                                     const colorClass = score > 0 ? 'text-secondary font-bold' : (score < 0 ? 'text-danger' : 'text-gray-500');
                                                     return (
-                                                        <td key={p.id} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass}`}>
+                                                        <td key={entry.round} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass} min-w-[50px]`}>
                                                             {score > 0 ? `+${score}` : score}
                                                         </td>
                                                     );
@@ -674,7 +756,7 @@
                 </div>
             );
 
-            // Stage 2: Game Over
+            // Stage 2: Game Over (Không cần thay đổi nhiều)
             const renderGameOver = () => (
                 <div className="p-6 text-center animate-bounce-in">
                     <h2 className="text-4xl font-extrabold text-danger mb-6">🎉 TRÒ CHƠI KẾT THÚC! 🎉</h2>
@@ -722,9 +804,10 @@
 
             return (
                 <div className="min-h-screen bg-gray-50 flex justify-center">
-                    <div className="w-full max-w-xl mx-auto bg-white shadow-xl rounded-2xl overflow-hidden my-4">
-                        <header className="bg-primary text-white p-4 text-center">
-                            <h1 className="text-3xl font-extrabold">App Ghi Điểm</h1>
+                    <div className="w-full max-w-xl mx-auto bg-white shadow-xl rounded-2xl overflow-hidden my-0 sm:my-4">
+                        <header className="bg-primary text-white p-3 text-center">
+                            {/* Đã xóa tiêu đề "App Ghi Điểm" */}
+                            <h1 className="text-2xl font-extrabold">GHI ĐIỂM TRÒ CHƠI</h1>
                         </header>
                         
                         {gameState === 'setup' && renderSetup()}
@@ -737,7 +820,10 @@
                         title={modal.type === 'info' ? 'Thông báo' : modal.type === 'confirm_undo' ? 'Xác nhận Hoàn tác' : 'Set lại Số Ván Chơi'}
                         isOpen={modal.isOpen}
                         onClose={() => setModal({ isOpen: false, type: null, data: null })}
-                        onConfirm={modal.type === 'confirm_undo' ? confirmUndo : confirmResetRounds}
+                        onConfirm={modal.type === 'confirm_undo' ? confirmUndo : 
+                                   modal.type === 'reset_rounds' ? confirmResetRounds :
+                                   () => setModal({ isOpen: false, type: null, data: null }) // Dành cho type 'info'
+                                  }
                         confirmText={modal.type === 'info' ? 'Đóng' : 'Xác nhận'}
                         showCancel={modal.type !== 'info'}
                         content={renderModalContent()}

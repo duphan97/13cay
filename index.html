@@ -201,7 +201,8 @@
             // State chính của ứng dụng
             const [gameState, setGameState] = useLocalStorageState('gameState', 'setup'); // 'setup', 'playing', 'game_over'
             const [players, setPlayers] = useLocalStorageState('players', []);
-            const [maxRounds, setMaxRounds] = useLocalStorageState('maxRounds', 15);
+            // maxRounds có thể là string ('') hoặc number
+            const [maxRounds, setMaxRounds] = useLocalStorageState('maxRounds', 15); 
             const [history, setHistory] = useLocalStorageState('history', []);
             const [showHistory, setShowHistory] = useState(false);
             const [isScoringMode, setIsScoringMode] = useState(false);
@@ -214,11 +215,12 @@
 
             // Tính toán tổng điểm và bảng xếp hạng
             const playerScores = useMemo(() => {
+                const roundsLimit = parseInt(maxRounds) || 15; // Dùng maxRounds đã parse cho an toàn
                 return players.map(p => {
                     const totalScore = history.reduce((sum, round) => sum + (round.scores[p.id] || 0), 0);
                     return { ...p, totalScore };
                 }).sort((a, b) => b.totalScore - a.totalScore); // Sắp xếp từ cao xuống thấp
-            }, [players, history]);
+            }, [players, history, maxRounds]);
 
             // --- Logic Audio 4. Phát âm thanh đọc điểm ---
             const playScoreAudio = (currentRoundScores) => {
@@ -233,27 +235,22 @@
 
                 let audioSequence = [];
                 
-                // Bắt đầu bằng âm thanh "Ván mới!"
-                audioSequence.push('vanmoi'); 
+                // Đã loại bỏ audioSequence.push('vanmoi'); theo yêu cầu.
 
                 scoreDetails.forEach(detail => {
                     const absScore = Math.abs(detail.score);
                     const nameFile = normalizeName(detail.name); // Tên người chơi chuẩn hóa
                     const scoreStr = absScore.toString(); // Số điểm (ví dụ: '5', '10')
 
-                    // Phát tên người chơi trước
-                    audioSequence.push(nameFile);
-
                     if (detail.score > 0) {
-                        // Điểm dương: dacong.mp3 + âm thanh số điểm
-                        audioSequence.push('dacong', scoreStr);
+                        // Điểm dương: [Name file], 'dacong', [Absolute Score file]
+                        audioSequence.push(nameFile, 'dacong', scoreStr);
                     } else if (detail.score < 0) {
-                        // Điểm âm: datru.mp3 + số điểm bị âm + colen.mp3
-                        audioSequence.push('datru', scoreStr);
-                        audioSequence.push('colen');
+                        // Điểm âm: 'datru', [Absolute Score file], [Name file], 'colen' (THEO YÊU CẦU CỤ THỂ CỦA NGƯỜI DÙNG)
+                        audioSequence.push('datru', scoreStr, nameFile, 'colen');
                     } else {
-                        // Điểm bằng 0
-                        audioSequence.push('0');
+                        // Điểm bằng 0: [Name file], '0', 'colen'
+                        audioSequence.push(nameFile, '0', 'colen');
                     }
                 });
                 
@@ -285,7 +282,8 @@
 
             // --- 5. Lịch sử điểm và Tổng kết ván ---
             useEffect(() => {
-                if (gameState === 'playing' && history.length >= maxRounds) {
+                const roundsLimit = parseInt(maxRounds);
+                if (gameState === 'playing' && history.length > 0 && roundsLimit > 0 && history.length >= roundsLimit) {
                     setGameState('game_over');
                     playGameOverAudio(playerScores);
                 }
@@ -373,6 +371,20 @@
                     });
                     return;
                 }
+                
+                // Logic xử lý khi maxRounds là string (khi người dùng xóa input)
+                const finalMaxRounds = parseInt(maxRounds);
+                if (isNaN(finalMaxRounds) || finalMaxRounds < 1) {
+                    setModal({
+                        isOpen: true,
+                        type: 'info',
+                        data: { title: 'Lỗi', message: 'Số ván chơi phải là một số nguyên dương hợp lệ (tối thiểu 1).' }
+                    });
+                    setMaxRounds(15); // Reset về mặc định
+                    return;
+                }
+
+                setMaxRounds(finalMaxRounds); // Đảm bảo state maxRounds là number
                 setGameState('playing');
                 // Khởi tạo các input điểm ván = 0 (dựa trên players mới)
                 const initialInputs = players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
@@ -385,7 +397,7 @@
             // 3. Nút “Ghi điểm ván mới”
             const handleNewScoreClick = () => {
                 if (!isScoringMode) {
-                    playAudioQueue(['vanmoi']);
+                    playAudioQueue(['vanmoi']); // CHỈ PHÁT LẦN 1
                     setIsScoringMode(true);
                     // Reset input scores to 0 when entering scoring mode
                     const initialInputs = playerScores.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
@@ -424,7 +436,7 @@
                 };
                 setHistory(prev => [...prev, newHistoryEntry]);
 
-                // Phát âm thanh
+                // Phát âm thanh theo logic mới
                 playScoreAudio(newRoundScores);
 
                 // Reset trạng thái
@@ -437,9 +449,9 @@
                  setModal({
                     isOpen: true,
                     type: 'reset_rounds',
-                    data: { currentMax: maxRounds, playedRounds: history.length }
+                    data: { currentMax: parseInt(maxRounds) || 15, playedRounds: history.length }
                 });
-                setNewMaxRoundsInput(maxRounds);
+                setNewMaxRoundsInput(parseInt(maxRounds) || 15);
             };
 
             const confirmResetRounds = () => {
@@ -505,13 +517,13 @@
 
                     {/* Chọn Số Ván (Cùng hàng) */}
                     <div className="mb-4 p-3 bg-white rounded-lg shadow-sm border border-gray-200">
-                        <h3 className="text-md font-semibold mb-2 text-gray-700">1. Chọn Số Ván Chơi (Hiện tại: {maxRounds})</h3>
+                        <h3 className="text-md font-semibold mb-2 text-gray-700">1. Chọn Số Ván Chơi (Hiện tại: {parseInt(maxRounds) || 15})</h3>
                         <div className="flex flex-wrap gap-2 mb-2">
                             {PRESET_ROUNDS.map(r => (
                                 <button
                                     key={r}
                                     onClick={() => setMaxRounds(r)}
-                                    className={`px-3 py-1 text-sm font-medium rounded-full transition ${maxRounds === r ? 'bg-primary text-white shadow-md' : 'bg-gray-200 text-gray-700'}`}
+                                    className={`px-3 py-1 text-sm font-medium rounded-full transition ${parseInt(maxRounds) === r ? 'bg-primary text-white shadow-md' : 'bg-gray-200 text-gray-700'}`}
                                 >
                                     {r} Ván
                                 </button>
@@ -520,10 +532,15 @@
                         <input
                             type="number"
                             min="1"
-                            value={maxRounds}
-                            onChange={(e) => {
+                            value={maxRounds} // Có thể là string '' hoặc number
+                            onChange={(e) => setMaxRounds(e.target.value)} // Chấp nhận string rỗng để user có thể xóa
+                            onBlur={(e) => {
                                 const val = parseInt(e.target.value);
-                                setMaxRounds(val > 0 ? val : 1);
+                                if (isNaN(val) || val < 1) {
+                                    setMaxRounds(1); // Set minimum to 1 if empty or invalid on blur
+                                } else {
+                                     setMaxRounds(val); // Ensure it's stored as a number on blur
+                                }
                             }}
                             className="w-full p-2 border border-gray-300 rounded-lg text-sm mt-1 focus:ring-secondary focus:border-secondary"
                         />
@@ -600,7 +617,7 @@
                         disabled={players.length < 2}
                         className="w-full py-3 bg-secondary text-white font-bold text-lg rounded-xl shadow-lg transition disabled:bg-gray-400"
                     >
-                        {players.length < 2 ? 'Cần 2 người chơi để bắt đầu' : `BẮT ĐẦU TRÒ CHƠI (${maxRounds} VÁN)`}
+                        {players.length < 2 ? 'Cần 2 người chơi để bắt đầu' : `BẮT ĐẦU TRÒ CHƠI (${parseInt(maxRounds) || 15} VÁN)`}
                     </button>
                 </div>
             );
@@ -609,7 +626,7 @@
             const renderPlaying = () => (
                 <div className="p-4 sm:p-6">
                     <h2 className="text-xl sm:text-2xl font-bold text-primary mb-4 text-center">
-                        VÁN {history.length + 1} / {maxRounds}
+                        VÁN {history.length + 1} / {parseInt(maxRounds) || 15}
                     </h2>
                     
                     {/* Vùng Ghi Điểm (Đảo vị trí) */}
@@ -663,8 +680,6 @@
                             {isScoringMode ? 'XÁC NHẬN GHI ĐIỂM VÁN NÀY' : 'GHI ĐIỂM VÁN MỚI'}
                         </button>
                     </div>
-                    
-                    {/* KHÔNG CÒN HIỂN THỊ TỔNG ĐIỂM HIỆN TẠI TẠI ĐÂY (ĐÃ XÓA THEO YÊU CẦU) */}
                     
                     
                     {/* Các nút chức năng */}
@@ -729,7 +744,7 @@
                                                     const score = entry.scores[p.id] || 0;
                                                     const colorClass = score > 0 ? 'text-secondary font-bold' : (score < 0 ? 'text-danger' : 'text-gray-500');
                                                     return (
-                                                        <td key={entry.round} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass} min-w-[50px]`}>
+                                                        <td key={entry.round} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass} min-w-[50px] font-mono`}>
                                                             {score > 0 ? `+${score}` : score}
                                                         </td>
                                                     );
@@ -761,7 +776,7 @@
                                 <span className={`text-xl font-bold ${index === 0 ? 'text-warning' : 'text-gray-700'}`}>
                                     {index + 1}. {p.name}
                                 </span>
-                                <span className={`text-3xl font-extrabold ${p.totalScore >= 0 ? 'text-secondary' : 'text-danger'}`}>
+                                <span className={`text-3xl font-extrabold ${p.totalScore >= 0 ? 'text-secondary' : 'text-danger'} font-mono`}>
                                     {p.totalScore}
                                 </span>
                             </div>
@@ -794,7 +809,6 @@
                 <div className="min-h-screen bg-gray-50 flex justify-center">
                     <div className="w-full max-w-xl mx-auto bg-white shadow-xl rounded-2xl overflow-hidden my-0 sm:my-4">
                         <header className="bg-primary text-white p-3 text-center">
-                            {/* Đã xóa tiêu đề "App Ghi Điểm" */}
                             <h1 className="text-2xl font-extrabold">GHI ĐIỂM TRÒ CHƠI</h1>
                         </header>
                         

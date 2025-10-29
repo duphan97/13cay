@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ứng Dụng Ghi Điểm Trò Chơi</title>
+    <title>TIẾN LÊN MIỀN TRUNG</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -62,14 +62,6 @@
         
         // Audio dự phòng cho người chơi tự thêm từ bàn phím
         const FALLBACK_AUDIOS = ['member1', 'member2', 'member3', 'member4']; 
-
-        /* * DANH SÁCH FILE AUDIO CẦN CÓ TRONG THƯ MỤC 'audio/':
-        * 1. Hệ thống: vanmoi.mp3, chiabuon.mp3, va.mp3, dathua.mp3, gameover.mp3
-        * Cảnh báo ván cuối: 3left.mp3, 2left.mp3, 1left.mp3
-        * 2. Số điểm: -10.mp3, -9.mp3, ..., 0.mp3, ..., 10.mp3 (Phạm vi đọc điểm phổ biến)
-        * 3. Tên người chơi: binhdang.mp3, dunghoang.mp3, dungnguyen.mp3, v.v.
-        * 4. Dự phòng: member1.mp3, member2.mp3, member3.mp3, member4.mp3
-        */
 
         // Danh sách tên người chơi có sẵn
         const PRESET_PLAYERS = [
@@ -817,7 +809,7 @@
                 </div>
             );
 
-            // Stage 1: Playing (ĐÃ TỐI ƯU GIAO DIỆN VÀ NÚT XÁC NHẬN)
+            // Stage 1: Playing
             const renderPlaying = () => (
                 <div className="p-3 sm:p-4"> 
                     <h2 className="text-xl sm:text-2xl font-bold text-primary mb-2 text-center"> 
@@ -979,7 +971,8 @@
 
                 return (
                     <div className="p-4 text-center animate-bounce-in">
-                        <h2 className="text-3xl font-extrabold text-danger mb-4">🎉 TRÒ CHƠI KẾT THÚC! 🎉</h2>
+                        {/* Kích thước chữ giảm từ 4xl xuống 2xl, margin giảm từ mb-6 xuống mb-4 */}
+                        <h2 className="text-2xl font-extrabold text-danger mb-4">🎉 TRÒ CHƠI KẾT THÚC! 🎉</h2>
                         <p className="text-lg font-medium text-gray-700 mb-4">Tổng số ván đã chơi: <span className="text-primary font-bold">{history.length}</span></p>
 
                         {/* Bảng Xếp Hạng */}
@@ -988,7 +981,8 @@
                             {sortedScores.map((p, index) => {
                                 const isCurrentLoser = isLoser(p);
                                 
-                                const itemClassName = `flex justify-between items-center py-2 px-3 my-1 rounded-lg transition transform duration-300 
+                                // Giảm padding/margin và kích thước chữ
+                                const itemClassName = `flex justify-between items-center py-1.5 px-3 my-1 rounded-lg transition transform duration-300 
                                                        ${isCurrentLoser ? 'bg-red-100 border-2 border-danger scale-105 shadow-lg' : 'bg-gray-50'}`;
                                 
                                 return (
@@ -996,9 +990,11 @@
                                         key={p.id} 
                                         className={itemClassName}
                                     >
+                                        {/* Kích thước chữ giảm từ xl xuống lg */}
                                         <span className={`text-lg font-bold ${isCurrentLoser ? 'text-danger' : 'text-gray-700'}`}>
                                             {index + 1}. {p.name}
                                         </span>
+                                        {/* Kích thước chữ giảm từ 3xl xuống 2xl */}
                                         <span className={`text-2xl font-extrabold ${p.totalScore >= 0 ? 'text-secondary' : 'text-danger'} font-mono`}>
                                             {p.totalScore}
                                         </span>
@@ -1052,10 +1048,10 @@
                             )}
                         </div>
 
-                        {/* Nút Chơi Lại */}
+                        {/* Nút Chơi Lại - Giảm kích thước */}
                         <button
                             onClick={confirmResetGame} 
-                            className="w-full py-3 bg-secondary text-white font-bold text-xl rounded-xl shadow-lg transition hover:bg-secondary/80"
+                            className="w-full py-2.5 bg-secondary text-white font-bold text-lg rounded-xl shadow-lg transition hover:bg-secondary/80"
                         >
                             CHƠI LẠI
                         </button>
@@ -1069,7 +1065,8 @@
                 <div className="min-h-screen bg-gray-50 flex justify-center">
                     <div className="w-full max-w-xl mx-auto bg-white shadow-xl rounded-2xl overflow-hidden my-0 sm:my-4">
                         <header className="bg-primary text-white p-3 text-center">
-                            <h1 className="text-2xl font-extrabold">GHI ĐIỂM TRÒ CHƠI</h1>
+                            {/* Thay đổi tiêu đề chính */}
+                            <h1 className="text-2xl font-extrabold">TIẾN LÊN MIỀN TRUNG</h1> 
                         </header>
                         
                         {gameState === 'setup' && renderSetup()}
@@ -1101,4 +1098,3 @@
     </script>
 </body>
 </html>
-

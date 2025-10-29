@@ -81,56 +81,154 @@
                 .replace(/\s+/g, ''); // Loại bỏ khoảng trắng
         };
 
-        // Custom Hook: Xử lý Audio theo hàng đợi (Đảm bảo không bị chồng chéo)
+        // Custom Hook: Xử lý Audio theo hàng đợi (Đảm bảo không bị chồng chéo VÀ TẢI TRƯỚC)
         const useAudioQueue = () => {
-            const audioQueue = useRef([]); // Hàng đợi lưu trữ các URL file audio
+            // Hàng đợi lưu trữ các MẢNG CÁC ĐỐI TƯỢNG AUDIO đã được tải (preloaded Audio objects)
+            const audioQueue = useRef([]); 
             const isPlaying = useRef(false); // Cờ trạng thái: Đang phát hay không?
+
+            // Hàm tải trước và trả về một promise (hoặc một mảng các đối tượng Audio)
+            const preloadAudioSequence = useCallback((soundNames) => {
+                const audioObjects = soundNames.map(name => {
+                    const fullPath = `${AUDIO_BASE_PATH}${name}.mp3`;
+                    const audio = new Audio(fullPath);
+                    audio.volume = 0.8;
+                    return audio;
+                });
+
+                // Promise.all chờ tất cả các file load thành công
+                const loadPromises = audioObjects.map(audio => new Promise((resolve, reject) => {
+                    // Nếu đã sẵn sàng (cached/loaded), resolve ngay
+                    if (audio.readyState >= 2) { // 2 = Have enough data
+                        resolve();
+                        return;
+                    }
+                    
+                    // Sự kiện 'canplaythrough' đảm bảo file đã được tải đủ để phát mà không bị ngắt quãng
+                    audio.addEventListener('canplaythrough', resolve, { once: true });
+                    
+                    // Xử lý lỗi tải file
+                    audio.addEventListener('error', (e) => {
+                        console.warn(`Lỗi tải file: ${audio.src}. Chuỗi phát này sẽ bị bỏ qua.`);
+                        // Bất kỳ lỗi nào cũng làm hỏng toàn bộ chuỗi
+                        reject(new Error(`Failed to load ${audio.src}`));
+                    }, { once: true });
+                    
+                    // Bắt đầu tải
+                    audio.load();
+                }));
+
+                return Promise.all(loadPromises)
+                    .then(() => audioObjects) // Trả về mảng các đối tượng Audio đã được tải
+                    .catch(error => {
+                        // Nếu có lỗi, trả về mảng rỗng để báo hiệu bỏ qua chuỗi này
+                        console.error('Toàn bộ chuỗi phát âm thanh này bị bỏ qua do lỗi tải file.', error.message);
+                        return []; 
+                    });
+
+            }, []);
 
             const playNext = useCallback(() => {
                 // Chỉ phát nếu còn file trong hàng đợi VÀ hiện tại KHÔNG có file nào đang phát
                 if (audioQueue.current.length > 0 && !isPlaying.current) {
                     isPlaying.current = true;
-                    const url = audioQueue.current.shift(); // Lấy file đầu tiên ra khỏi hàng đợi
-                    
-                    const audio = new Audio(url);
-                    audio.volume = 0.8; 
-                    
-                    // --- Đảm bảo tính tuần tự: Khi file kết thúc, gọi playNext() ---
-                    audio.onended = () => {
-                        isPlaying.current = false; // Mở khóa
-                        playNext(); // Gọi lại để phát file tiếp theo (nếu có)
-                    };
-                    
-                    // Xử lý lỗi (ví dụ: không tìm thấy file)
-                    audio.onerror = () => {
-                        console.error("Audio playback error (File not found?):", url);
-                        isPlaying.current = false; // Mở khóa
-                        playNext(); // Bỏ qua file lỗi và tiếp tục phát file tiếp theo
+                    // Lấy toàn bộ mảng các đối tượng Audio đã được tải ra khỏi hàng đợi
+                    const currentSequence = audioQueue.current.shift(); 
+                    let currentAudioIndex = 0;
+
+                    // Hàm đệ quy phát lần lượt từng file trong chuỗi
+                    const playSequence = () => {
+                        if (currentAudioIndex >= currentSequence.length) {
+                            // Kết thúc chuỗi, mở khóa và chuyển sang chuỗi tiếp theo
+                            isPlaying.current = false; 
+                            playNext(); 
+                            return;
+                        }
+
+                        const audio = currentSequence[currentAudioIndex];
+                        
+                        // Đặt sự kiện onended trước khi play
+                        audio.onended = () => {
+                            currentAudioIndex++;
+                            // Chơi liền mạch (delay 0ms), gọi playSequence() ngay
+                            playSequence(); 
+                        };
+
+                        // Bắt đầu phát
+                        audio.play().catch(e => {
+                            console.warn("Autoplay was prevented or playback error:", audio.src, e);
+                            // Nếu lỗi phát, chuyển sang file tiếp theo
+                            currentAudioIndex++;
+                            playSequence();
+                        });
                     };
 
-                    // Bắt đầu phát (Xử lý lỗi Autoplay Policy)
-                    audio.play().catch(e => {
-                        console.warn("Autoplay was prevented (User interaction needed or file missing):", url, e);
+                    // Bắt đầu phát chuỗi
+                    if (currentSequence.length > 0) {
+                        playSequence();
+                    } else {
+                        // Nếu chuỗi rỗng (do lỗi tải), chuyển sang chuỗi tiếp theo ngay lập tức
                         isPlaying.current = false;
                         playNext();
-                    });
+                    }
                 }
             }, []);
 
-            // Thêm một hoặc nhiều tên file vào hàng đợi
-            const addToQueue = useCallback((soundNames) => {
-                soundNames.forEach(name => {
-                    const fullPath = `${AUDIO_BASE_PATH}${name}.mp3`;
-                    audioQueue.current.push(fullPath);
-                });
+            // Thêm một hoặc nhiều TÊN file vào hàng đợi (sẽ được preload)
+            const addToQueue = useCallback((soundNamesArray) => {
+                // soundNamesArray là một mảng chứa TÊN file (vd: ['vanmoi'] hoặc ['dacong', '5', 'binhdang'])
                 
-                // Nếu không có file nào đang phát, bắt đầu chu trình phát
-                if (!isPlaying.current) {
-                    playNext();
-                }
-            }, [playNext]);
+                // 1. Tải trước và thêm vào hàng đợi
+                const loadingPromise = preloadAudioSequence(soundNamesArray)
+                    .then(preloadedAudioObjects => {
+                        if (preloadedAudioObjects.length > 0) {
+                            audioQueue.current.push(preloadedAudioObjects);
+                        }
+                    })
+                    .finally(() => {
+                        // 2. Bắt đầu chu trình phát (nếu chưa phát)
+                        if (!isPlaying.current) {
+                            playNext();
+                        }
+                    });
 
-            return addToQueue;
+                return loadingPromise; // Trả về promise để theo dõi quá trình tải
+            }, [playNext, preloadAudioSequence]);
+
+
+            // Đối với logic đọc điểm (nhiều người chơi), ta cần một hàm gom các chuỗi lại:
+            const addMultipleSequencesToQueue = useCallback((sequences) => {
+                let initialPlayTriggered = false;
+                
+                // Tạo một mảng promises để chờ tất cả các chuỗi tải xong
+                const allSequencesLoaded = sequences.map(soundNamesArray => {
+                     return preloadAudioSequence(soundNamesArray)
+                        .then(preloadedAudioObjects => {
+                            if (preloadedAudioObjects.length > 0) {
+                                audioQueue.current.push(preloadedAudioObjects);
+                                // Kích hoạt phát lần đầu ngay sau khi chuỗi đầu tiên được tải
+                                if (!isPlaying.current && !initialPlayTriggered) {
+                                    initialPlayTriggered = true;
+                                    playNext();
+                                }
+                            }
+                        });
+                });
+
+                // Chờ tất cả promises hoàn thành trước khi gọi playNext() một lần cuối để đảm bảo hàng đợi không bị bỏ sót
+                Promise.all(allSequencesLoaded).finally(() => {
+                    if (!isPlaying.current) {
+                        playNext();
+                    }
+                });
+
+            }, [playNext, preloadAudioSequence]);
+
+
+            return { 
+                addToQueue: addToQueue, // Dùng cho các lệnh đơn lẻ (vd: 'vanmoi')
+                addMultipleSequencesToQueue: addMultipleSequencesToQueue // Dùng cho logic đọc điểm (nhiều chuỗi liền nhau)
+            };
         };
 
 
@@ -211,7 +309,7 @@
             const [modal, setModal] = useState({ isOpen: false, type: null, data: null });
             const [newMaxRoundsInput, setNewMaxRoundsInput] = useState(15);
             
-            const playAudioQueue = useAudioQueue(); // Hook quản lý hàng đợi âm thanh
+            const { addToQueue, addMultipleSequencesToQueue } = useAudioQueue(); // Hook quản lý hàng đợi âm thanh
 
             // Tính toán tổng điểm và bảng xếp hạng
             const playerScores = useMemo(() => {
@@ -222,7 +320,7 @@
                 }).sort((a, b) => b.totalScore - a.totalScore); // Sắp xếp từ cao xuống thấp
             }, [players, history, maxRounds]);
 
-            // --- Logic Audio 4. Phát âm thanh đọc điểm ---
+            // --- Logic Audio 4. Phát âm thanh đọc điểm (Đã tối ưu) ---
             const playScoreAudio = (currentRoundScores) => {
                 // Tạo mảng chi tiết điểm, có điểm ván vừa ghi
                 const scoreDetails = playerScores.map(p => ({
@@ -232,32 +330,37 @@
                 }));
                 
                 // Sắp xếp theo điểm ván vừa ghi (cao -> thấp)
-                // Lưu ý: Mảng playerScores đã được sắp xếp theo tổng điểm. Ở đây cần sắp xếp theo 'score' ván mới.
                 scoreDetails.sort((a, b) => b.score - a.score);
 
-                let audioSequence = [];
+                let allAudioSequences = [];
                 
                 scoreDetails.forEach(detail => {
                     const absScore = Math.abs(detail.score);
                     const nameFile = normalizeName(detail.name); // Tên người chơi chuẩn hóa
                     const scoreStr = absScore.toString(); // Số điểm (ví dụ: '5', '10')
 
+                    let audioSequence = [];
+
                     if (detail.score > 0) {
                         // ĐIỂM DƯƠNG: 'dacong', [Absolute Score file], [Name file]
-                        audioSequence.push('dacong', scoreStr, nameFile); 
+                        audioSequence = ['dacong', scoreStr, nameFile]; 
                     } else if (detail.score < 0) {
                         // ĐIỂM ÂM: 'datru', [Absolute Score file], [Name file], 'colen'
-                        audioSequence.push('datru', scoreStr, nameFile, 'colen');
+                        audioSequence = ['datru', scoreStr, nameFile, 'colen'];
                     } else {
                         // ĐIỂM BẰNG 0: [Name file], '0', 'colen'
-                        audioSequence.push(nameFile, '0', 'colen');
+                        audioSequence = [nameFile, '0', 'colen'];
                     }
+                    
+                    // Thêm chuỗi phát của người chơi này vào danh sách tổng
+                    allAudioSequences.push(audioSequence);
                 });
                 
-                playAudioQueue(audioSequence);
+                // Gửi tất cả các chuỗi để được tải trước và phát liền mạch
+                addMultipleSequencesToQueue(allAudioSequences);
             };
 
-            // Logic Audio 6. Kết thúc trò chơi
+            // Logic Audio 6. Kết thúc trò chơi (Đã tối ưu)
             const playGameOverAudio = (sortedPlayers) => {
                 if (sortedPlayers.length < 2) return;
                 
@@ -277,7 +380,8 @@
                     'dathua'
                 ];
                 
-                playAudioQueue(audioSequence);
+                // Sử dụng addToQueue cho lệnh đơn (dù nó là một chuỗi)
+                addToQueue(audioSequence);
             };
 
             // --- 5. Lịch sử điểm và Tổng kết ván ---
@@ -285,9 +389,15 @@
                 const roundsLimit = parseInt(maxRounds);
                 if (gameState === 'playing' && history.length > 0 && roundsLimit > 0 && history.length >= roundsLimit) {
                     setGameState('game_over');
-                    playGameOverAudio(playerScores);
+                    // Tính lại playerScores cuối cùng trước khi phát audio kết thúc
+                    const finalPlayerScores = players.map(p => {
+                        const totalScore = history.reduce((sum, round) => sum + (round.scores[p.id] || 0), 0);
+                        return { ...p, totalScore };
+                    }).sort((a, b) => b.totalScore - a.totalScore);
+                    
+                    playGameOverAudio(finalPlayerScores);
                 }
-            }, [history, maxRounds, gameState, playerScores]);
+            }, [history, maxRounds, gameState, players]);
             
             // Khởi tạo/Cập nhật input scores khi players thay đổi (sau khi load state từ localStorage)
             useEffect(() => {
@@ -397,7 +507,7 @@
             // 3. Nút “Ghi điểm ván mới”
             const handleNewScoreClick = () => {
                 if (!isScoringMode) {
-                    playAudioQueue(['vanmoi']); // CHỈ PHÁT LẦN 1
+                    addToQueue(['vanmoi']); // CHỈ PHÁT LẦN 1
                     setIsScoringMode(true);
                     // Reset input scores to 0 when entering scoring mode
                     const initialInputs = playerScores.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
@@ -476,7 +586,14 @@
                 setModal({ isOpen: false, type: null, data: null });
                 if (history.length >= newMax) {
                     setGameState('game_over');
-                    playGameOverAudio(playerScores);
+                    
+                    // Tính lại playerScores cuối cùng trước khi phát audio kết thúc
+                    const finalPlayerScores = players.map(p => {
+                        const totalScore = history.reduce((sum, round) => sum + (round.scores[p.id] || 0), 0);
+                        return { ...p, totalScore };
+                    }).sort((a, b) => b.totalScore - a.totalScore);
+                    
+                    playGameOverAudio(finalPlayerScores);
                 }
             };
 

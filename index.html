@@ -224,6 +224,7 @@
 
             // --- Logic Audio 4. Phát âm thanh đọc điểm ---
             const playScoreAudio = (currentRoundScores) => {
+                // Tạo mảng chi tiết điểm, có điểm ván vừa ghi
                 const scoreDetails = playerScores.map(p => ({
                     name: p.name,
                     score: currentRoundScores[p.id] || 0,
@@ -231,25 +232,24 @@
                 }));
                 
                 // Sắp xếp theo điểm ván vừa ghi (cao -> thấp)
+                // Lưu ý: Mảng playerScores đã được sắp xếp theo tổng điểm. Ở đây cần sắp xếp theo 'score' ván mới.
                 scoreDetails.sort((a, b) => b.score - a.score);
 
                 let audioSequence = [];
                 
-                // Đã loại bỏ audioSequence.push('vanmoi'); theo yêu cầu.
-
                 scoreDetails.forEach(detail => {
                     const absScore = Math.abs(detail.score);
                     const nameFile = normalizeName(detail.name); // Tên người chơi chuẩn hóa
                     const scoreStr = absScore.toString(); // Số điểm (ví dụ: '5', '10')
 
                     if (detail.score > 0) {
-                        // Điểm dương: [Name file], 'dacong', [Absolute Score file]
-                        audioSequence.push(nameFile, 'dacong', scoreStr);
+                        // ĐIỂM DƯƠNG: 'dacong', [Absolute Score file], [Name file]
+                        audioSequence.push('dacong', scoreStr, nameFile); 
                     } else if (detail.score < 0) {
-                        // Điểm âm: 'datru', [Absolute Score file], [Name file], 'colen' (THEO YÊU CẦU CỤ THỂ CỦA NGƯỜI DÙNG)
+                        // ĐIỂM ÂM: 'datru', [Absolute Score file], [Name file], 'colen'
                         audioSequence.push('datru', scoreStr, nameFile, 'colen');
                     } else {
-                        // Điểm bằng 0: [Name file], '0', 'colen'
+                        // ĐIỂM BẰNG 0: [Name file], '0', 'colen'
                         audioSequence.push(nameFile, '0', 'colen');
                     }
                 });

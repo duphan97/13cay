@@ -61,24 +61,36 @@
         const AUDIO_BASE_PATH = 'audio/';
         
         /* * DANH SÁCH FILE AUDIO CẦN CÓ TRONG THƯ MỤC 'audio/':
-        * 1. Hệ thống: vanmoi.mp3, dacong.mp3, datru.mp3, colen.mp3, chiabuon.mp3, va.mp3, dathua.mp3
-        * 2. Số điểm: 0.mp3, 1.mp3, 2.mp3, ... (cho các số điểm thường gặp)
+        * 1. Hệ thống: vanmoi.mp3, chiabuon.mp3, va.mp3, dathua.mp3
+        * 2. Số điểm: -10.mp3, -9.mp3, ..., 0.mp3, ..., 10.mp3 (cho các số điểm thường gặp)
         * 3. Tên người chơi: binhdang.mp3, dunghoang.mp3, dungnguyen.mp3, duphan.mp3, dongle.mp3, v.v.
         */
 
-        // Danh sách tên người chơi có sẵn
-        const PRESET_PLAYERS = ["Bình Đặng", "Dũng Hoàng", "Dũng Nguyễn", "Dự Phan", "Đông Lê"];
+        // Danh sách tên người chơi có sẵn (ĐÃ CẬP NHẬT VÀ SẮP XẾP)
+        const PRESET_PLAYERS = [
+            "Bình Đặng", 
+            "Dũng Hoàng", 
+            "Dũng Nguyễn", 
+            "Định Ngô", 
+            "Đông Lê", 
+            "Khánh Đỗ", 
+            "Minh Anh", 
+            "Nhân Trần", 
+            "Quý Huỳnh", 
+            "Trúc Trần"
+        ];
         const PRESET_ROUNDS = [15, 21, 31];
 
         // --- 1. Custom Hooks & Utilities ---
 
         // Hàm chuẩn hóa tên người chơi thành tên file không dấu, không khoảng trắng, chữ thường
         const normalizeName = (name) => {
-            // Loại bỏ dấu tiếng Việt (NFD and combining marks regex)
             return name
-                .normalize('NFD').replace(/[\u0300-\u036f]/g, "") 
                 .toLowerCase()
-                .replace(/\s+/g, ''); // Loại bỏ khoảng trắng
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "") // bỏ dấu
+                .replace(/đ/g, 'd')             // đổi đ -> d
+                .replace(/\s+/g, '');           // bỏ khoảng trắng
         };
 
         // Custom Hook: Xử lý Audio theo hàng đợi (Đảm bảo không bị chồng chéo VÀ TẢI TRƯỚC)
@@ -89,40 +101,65 @@
 
             // Hàm tải trước và trả về một promise (hoặc một mảng các đối tượng Audio)
             const preloadAudioSequence = useCallback((soundNames) => {
-                const audioObjects = soundNames.map(name => {
+                
+                // Helper function: Tải một file âm thanh với tối đa 3 lần thử lại
+                const loadAudioWithRetry = (name, maxRetries = 3) => {
                     const fullPath = `${AUDIO_BASE_PATH}${name}.mp3`;
                     const audio = new Audio(fullPath);
                     audio.volume = 0.8;
-                    return audio;
-                });
+                    let attempts = 0;
 
-                // Promise.all chờ tất cả các file load thành công
-                const loadPromises = audioObjects.map(audio => new Promise((resolve, reject) => {
-                    // Nếu đã sẵn sàng (cached/loaded), resolve ngay
-                    if (audio.readyState >= 2) { // 2 = Have enough data
-                        resolve();
-                        return;
-                    }
-                    
-                    // Sự kiện 'canplaythrough' đảm bảo file đã được tải đủ để phát mà không bị ngắt quãng
-                    audio.addEventListener('canplaythrough', resolve, { once: true });
-                    
-                    // Xử lý lỗi tải file
-                    audio.addEventListener('error', (e) => {
-                        console.warn(`Lỗi tải file: ${audio.src}. Chuỗi phát này sẽ bị bỏ qua.`);
-                        // Bất kỳ lỗi nào cũng làm hỏng toàn bộ chuỗi
-                        reject(new Error(`Failed to load ${audio.src}`));
-                    }, { once: true });
-                    
-                    // Bắt đầu tải
-                    audio.load();
-                }));
+                    return new Promise((resolve, reject) => {
+                        const tryLoad = () => {
+                            attempts++;
+                            
+                            // Nếu đã sẵn sàng (cached/loaded), resolve ngay
+                            if (audio.readyState >= 2) { 
+                                resolve(audio);
+                                return;
+                            }
+                            
+                            // Listener cho thành công
+                            const handleSuccess = () => {
+                                audio.removeEventListener('error', handleError); 
+                                resolve(audio);
+                            };
+                            
+                            // Listener cho thất bại (và logic retry)
+                            const handleError = (e) => {
+                                audio.removeEventListener('canplaythrough', handleSuccess);
+                                audio.removeEventListener('error', handleError); // Gỡ bỏ listener hiện tại trước khi thử lại
+                                
+                                if (attempts < maxRetries) {
+                                    console.warn(`[LỖI TẢI FILE] Lần ${attempts}/${maxRetries} thất bại cho: ${audio.src}. Thử lại sau 500ms...`);
+                                    // Chờ 500ms trước khi thử lại
+                                    setTimeout(tryLoad, 500); 
+                                } else {
+                                    console.error(`[LỖI TẢI FILE] Thất bại sau ${maxRetries} lần thử cho: ${audio.src}. Bỏ qua chuỗi âm thanh này.`);
+                                    reject(new Error(`Failed to load ${audio.src} after ${maxRetries} attempts.`));
+                                }
+                            };
+
+                            // Đặt listener mới cho mỗi lần thử
+                            audio.addEventListener('canplaythrough', handleSuccess, { once: true });
+                            audio.addEventListener('error', handleError, { once: true });
+                            
+                            // Bắt đầu tải
+                            audio.load();
+                        };
+                        
+                        tryLoad();
+                    });
+                };
+
+                // Sử dụng Promise.all để tải tất cả các file trong chuỗi (có retry)
+                const loadPromises = soundNames.map(name => loadAudioWithRetry(name));
 
                 return Promise.all(loadPromises)
-                    .then(() => audioObjects) // Trả về mảng các đối tượng Audio đã được tải
+                    .then(audioObjects => audioObjects) // Trả về mảng các đối tượng Audio đã được tải
                     .catch(error => {
                         // Nếu có lỗi, trả về mảng rỗng để báo hiệu bỏ qua chuỗi này
-                        console.error('Toàn bộ chuỗi phát âm thanh này bị bỏ qua do lỗi tải file.', error.message);
+                        console.warn('Toàn bộ chuỗi phát âm thanh này đã bị bỏ qua do lỗi tải file đã được ghi nhận ở trên.');
                         return []; 
                     });
 
@@ -176,7 +213,7 @@
 
             // Thêm một hoặc nhiều TÊN file vào hàng đợi (sẽ được preload)
             const addToQueue = useCallback((soundNamesArray) => {
-                // soundNamesArray là một mảng chứa TÊN file (vd: ['vanmoi'] hoặc ['dacong', '5', 'binhdang'])
+                // soundNamesArray là một mảng chứa TÊN file (vd: ['vanmoi'])
                 
                 // 1. Tải trước và thêm vào hàng đợi
                 const loadingPromise = preloadAudioSequence(soundNamesArray)
@@ -320,7 +357,7 @@
                 }).sort((a, b) => b.totalScore - a.totalScore); // Sắp xếp từ cao xuống thấp
             }, [players, history, maxRounds]);
 
-            // --- Logic Audio 4. Phát âm thanh đọc điểm (Đã tối ưu) ---
+            // --- Logic Audio 4. Phát âm thanh đọc điểm ---
             const playScoreAudio = (currentRoundScores) => {
                 // Tạo mảng chi tiết điểm, có điểm ván vừa ghi
                 const scoreDetails = playerScores.map(p => ({
@@ -335,22 +372,12 @@
                 let allAudioSequences = [];
                 
                 scoreDetails.forEach(detail => {
-                    const absScore = Math.abs(detail.score);
                     const nameFile = normalizeName(detail.name); // Tên người chơi chuẩn hóa
-                    const scoreStr = absScore.toString(); // Số điểm (ví dụ: '5', '10')
+                    // Sử dụng điểm (bao gồm dấu âm nếu có) làm tên file âm thanh
+                    const scoreFile = detail.score.toString(); 
 
-                    let audioSequence = [];
-
-                    if (detail.score > 0) {
-                        // ĐIỂM DƯƠNG: 'dacong', [Absolute Score file], [Name file]
-                        audioSequence = ['dacong', scoreStr, nameFile]; 
-                    } else if (detail.score < 0) {
-                        // ĐIỂM ÂM: 'datru', [Absolute Score file], [Name file], 'colen'
-                        audioSequence = ['datru', scoreStr, nameFile, 'colen'];
-                    } else {
-                        // ĐIỂM BẰNG 0: [Name file], '0', 'colen'
-                        audioSequence = [nameFile, '0', 'colen'];
-                    }
+                    // Chuỗi phát mới: [Tên người chơi], [Điểm]
+                    const audioSequence = [nameFile, scoreFile];
                     
                     // Thêm chuỗi phát của người chơi này vào danh sách tổng
                     allAudioSequences.push(audioSequence);
@@ -360,7 +387,7 @@
                 addMultipleSequencesToQueue(allAudioSequences);
             };
 
-            // Logic Audio 6. Kết thúc trò chơi (Đã tối ưu)
+            // Logic Audio 6. Kết thúc trò chơi (Giữ nguyên)
             const playGameOverAudio = (sortedPlayers) => {
                 if (sortedPlayers.length < 2) return;
                 
@@ -459,8 +486,8 @@
                     }
                     
                     const normalizedName = normalizeName(newPlayerName);
-                    // Dùng tên chuẩn hóa làm ID nếu chưa tồn tại
-                    const newPlayer = { id: normalizedName + generateId(), name: newPlayerName.trim() }; // Thêm ID ngẫu nhiên để tránh trùng với PRESET
+                    // Dùng tên chuẩn hóa + ID ngẫu nhiên làm ID
+                    const newPlayer = { id: normalizedName + generateId(), name: newPlayerName.trim() }; 
                     setPlayers([...players, newPlayer]);
                     setNewPlayerName('');
                 } else if (players.length >= MAX_PLAYERS) {

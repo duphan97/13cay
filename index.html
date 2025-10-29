@@ -61,12 +61,13 @@
         const AUDIO_BASE_PATH = 'audio/';
         
         /* * DANH SÁCH FILE AUDIO CẦN CÓ TRONG THƯ MỤC 'audio/':
-        * 1. Hệ thống: vanmoi.mp3, chiabuon.mp3, va.mp3, dathua.mp3
-        * 2. Số điểm: -10.mp3, -9.mp3, ..., 0.mp3, ..., 10.mp3 (cho các số điểm thường gặp)
-        * 3. Tên người chơi: binhdang.mp3, dunghoang.mp3, dungnguyen.mp3, duphan.mp3, dongle.mp3, v.v.
+        * 1. Hệ thống: vanmoi.mp3, chiabuon.mp3, va.mp3, dathua.mp3, gameover.mp3 (NEW)
+        * Cảnh báo ván cuối: 3left.mp3, 2left.mp3, 1left.mp3 (NEW)
+        * 2. Số điểm: -10.mp3, -9.mp3, ..., 0.mp3, ..., 10.mp3 
+        * 3. Tên người chơi: binhdang.mp3, dunghoang.mp3, dungnguyen.mp3, v.v.
         */
 
-        // Danh sách tên người chơi có sẵn (ĐÃ CẬP NHẬT VÀ SẮP XẾP)
+        // Danh sách tên người chơi có sẵn (ĐÃ SẮP XẾP)
         const PRESET_PLAYERS = [
             "Bình Đặng", 
             "Dũng Hoàng", 
@@ -263,7 +264,7 @@
 
 
             return { 
-                addToQueue: addToQueue, // Dùng cho các lệnh đơn lẻ (vd: 'vanmoi')
+                addToQueue: addToQueue, // Dùng cho các lệnh đơn lẻ (vd: ['vanmoi'])
                 addMultipleSequencesToQueue: addMultipleSequencesToQueue // Dùng cho logic đọc điểm (nhiều chuỗi liền nhau)
             };
         };
@@ -339,7 +340,8 @@
             // maxRounds có thể là string ('') hoặc number
             const [maxRounds, setMaxRounds] = useLocalStorageState('maxRounds', 15); 
             const [history, setHistory] = useLocalStorageState('history', []);
-            const [showHistory, setShowHistory] = useState(false);
+            const [showHistory, setShowHistory] = useState(false); // cho màn hình Playing
+            const [showGameOverHistory, setShowGameOverHistory] = useState(false); // NEW: cho màn hình Game Over
             const [isScoringMode, setIsScoringMode] = useState(false);
             const [newPlayerName, setNewPlayerName] = useState('');
             const [roundScoreInputs, setRoundScoreInputs] = useLocalStorageState('roundScoreInputs', {}); // Giữ lại giá trị khi refresh
@@ -387,8 +389,23 @@
                 addMultipleSequencesToQueue(allAudioSequences);
             };
 
-            // Logic Audio 6. Kết thúc trò chơi (Giữ nguyên)
-            const playGameOverAudio = (sortedPlayers) => {
+            // Logic Audio 6a. Phát thông báo ván còn lại (NEW)
+            const playLowRoundAudio = useCallback((roundsLeft) => {
+                let audioFile = null;
+                if (roundsLeft === 3) {
+                    audioFile = '3left';
+                } else if (roundsLeft === 2) {
+                    audioFile = '2left';
+                } else if (roundsLeft === 1) {
+                    audioFile = '1left';
+                }
+                if (audioFile) {
+                    addToQueue([audioFile]);
+                }
+            }, [addToQueue]);
+
+            // Logic Audio 6b. Thông báo người thua (Được gọi sau gameover.mp3)
+            const playLoserAudio = useCallback((sortedPlayers) => { // Renamed from playGameOverAudio
                 if (sortedPlayers.length < 2) return;
                 
                 // Người ít điểm nhất là người cuối cùng trong mảng đã sắp xếp (thấp điểm)
@@ -409,22 +426,40 @@
                 
                 // Sử dụng addToQueue cho lệnh đơn (dù nó là một chuỗi)
                 addToQueue(audioSequence);
-            };
+            }, [addToQueue]);
 
-            // --- 5. Lịch sử điểm và Tổng kết ván ---
+            // --- 5. Lịch sử điểm và Tổng kết ván (ĐÃ CẬP NHẬT LOGIC AUDIO) ---
             useEffect(() => {
                 const roundsLimit = parseInt(maxRounds);
-                if (gameState === 'playing' && history.length > 0 && roundsLimit > 0 && history.length >= roundsLimit) {
+                const currentRound = history.length;
+                
+                if (gameState !== 'playing' || roundsLimit <= 0) return;
+
+                const roundsLeft = roundsLimit - currentRound;
+                
+                // 1. Logic Game Over (Phát gameover.mp3 và thông báo người thua)
+                if (currentRound >= roundsLimit) {
                     setGameState('game_over');
-                    // Tính lại playerScores cuối cùng trước khi phát audio kết thúc
+                    
+                    // Tính toán final scores
                     const finalPlayerScores = players.map(p => {
                         const totalScore = history.reduce((sum, round) => sum + (round.scores[p.id] || 0), 0);
                         return { ...p, totalScore };
                     }).sort((a, b) => b.totalScore - a.totalScore);
                     
-                    playGameOverAudio(finalPlayerScores);
+                    // Phát âm thanh: gameover.mp3 trước, sau đó đến người thua
+                    addToQueue(['gameover']); // NEW: Phát âm thanh kết thúc trò chơi
+                    playLoserAudio(finalPlayerScores); // Gọi hàm thông báo người thua
+                    return; // Game is over
                 }
-            }, [history, maxRounds, gameState, players]);
+
+                // 2. Logic Low Rounds Notification (Phát 3left, 2left, 1left)
+                // Chỉ kích hoạt khi vừa kết thúc một ván (currentRound > 0)
+                if (currentRound > 0) { 
+                   playLowRoundAudio(roundsLeft);
+                }
+
+            }, [history, maxRounds, gameState, players, addToQueue, playLowRoundAudio, playLoserAudio]); // Cập nhật dependencies
             
             // Khởi tạo/Cập nhật input scores khi players thay đổi (sau khi load state từ localStorage)
             useEffect(() => {
@@ -611,16 +646,18 @@
                 }
                 setMaxRounds(newMax);
                 setModal({ isOpen: false, type: null, data: null });
+                
+                // Kiểm tra nếu việc tăng maxRounds lại khiến game kết thúc ngay lập tức (hiếm)
                 if (history.length >= newMax) {
                     setGameState('game_over');
                     
-                    // Tính lại playerScores cuối cùng trước khi phát audio kết thúc
                     const finalPlayerScores = players.map(p => {
                         const totalScore = history.reduce((sum, round) => sum + (round.scores[p.id] || 0), 0);
                         return { ...p, totalScore };
                     }).sort((a, b) => b.totalScore - a.totalScore);
                     
-                    playGameOverAudio(finalPlayerScores);
+                    addToQueue(['gameover']);
+                    playLoserAudio(finalPlayerScores);
                 }
             };
 
@@ -903,7 +940,7 @@
                 </div>
             );
 
-            // Stage 2: Game Over (Không cần thay đổi nhiều)
+            // Stage 2: Game Over (ĐÃ CẬP NHẬT LỊCH SỬ ĐIỂM)
             const renderGameOver = () => (
                 <div className="p-6 text-center animate-bounce-in">
                     <h2 className="text-4xl font-extrabold text-danger mb-6">🎉 TRÒ CHƠI KẾT THÚC! 🎉</h2>
@@ -925,6 +962,51 @@
                                 </span>
                             </div>
                         ))}
+                    </div>
+
+                    {/* Lịch sử điểm tại màn hình Game Over (NEW) */}
+                    <div className="bg-white p-4 rounded-xl shadow-lg mb-8">
+                        <button 
+                            onClick={() => setShowGameOverHistory(prev => !prev)}
+                            className="w-full text-left text-lg font-semibold text-gray-700 mb-2 p-2 rounded-lg transition flex justify-between items-center"
+                        >
+                            Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showGameOverHistory ? '▲' : '▼'}
+                        </button>
+                        {showGameOverHistory && (
+                            <div className="overflow-x-auto mt-2 max-h-64">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50 sticky left-0 z-10">
+                                        <tr>
+                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 shadow-sm">Người chơi</th>
+                                            {[...Array(history.length)].map((_, index) => (
+                                                <th key={index} className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase min-w-[50px]">Ván {history.length - index}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {players.map(p => (
+                                            <tr key={p.id}>
+                                                <td 
+                                                    className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white shadow-sm truncate" 
+                                                    title={p.name}
+                                                >
+                                                    {p.name}
+                                                </td>
+                                                {[...history].reverse().map(entry => {
+                                                    const score = entry.scores[p.id] || 0;
+                                                    const colorClass = score > 0 ? 'text-secondary font-bold' : (score < 0 ? 'text-danger' : 'text-gray-500');
+                                                    return (
+                                                        <td key={entry.round} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass} min-w-[50px] font-mono`}>
+                                                            {score > 0 ? `+${score}` : score}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
 
                     {/* Nút Chơi Lại */}

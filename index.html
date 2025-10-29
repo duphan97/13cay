@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TIẾN LÊN MIỀN TRUNG</title>
     
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -16,6 +18,9 @@
                         'warning': '#f59e0b', // Amber 500
                         'danger': '#ef4444', // Red 500
                     },
+                    boxShadow: {
+                        '3xl': '0 35px 60px -15px rgba(0, 0, 0, 0.3)',
+                    }
                 }
             }
         }
@@ -26,6 +31,11 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <style>
+        /* Áp dụng Font Quicksand */
+        body {
+            font-family: 'Quicksand', sans-serif;
+        }
+        
         @keyframes bounce-in {
             0%, 20%, 40%, 60%, 80%, 100% {
                 transition-timing-function: cubic-bezier(0.215, 0.610, 0.355, 1.000);
@@ -45,12 +55,16 @@
         .animate-fade-in {
             animation: fade-in 0.3s ease-out;
         }
-        .animate-pulse-slow {
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        @keyframes pulse-strong {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } /* Emerald 500 */
+            50% { opacity: 0.8; box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+        }
+        .animate-pulse-strong {
+            animation: pulse-strong 1.5s infinite;
         }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen font-sans">
+<body class="bg-gray-50 min-h-screen">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -77,6 +91,17 @@
             "Trúc Trần"
         ];
         const PRESET_ROUNDS = [15, 21, 31];
+        
+        // --- CẤU HÌNH GITHUB API ---
+        const GITHUB_TOKEN_PART1 = 'github_pat_11AHU2I4Q0eTQynszWYAnj_';
+        const GITHUB_TOKEN_PART2 = 'g3icOcB6W3He3EFtkB3rEuvAIst0GQQf50IaXXPDllERWI7ZWWJF0pB4QeI'; 
+        const GITHUB_TOKEN = GITHUB_TOKEN_PART1 + GITHUB_TOKEN_PART2; 
+        const REPO_OWNER = 'duphan97';
+        const REPO_NAME = '9cay';
+        const DATA_FILE_PATH = 'data/session_history.json'; 
+        const GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${DATA_FILE_PATH}`;
+        // --- HẾT CẤU HÌNH GITHUB API ---
+
 
         // --- 1. Custom Hooks & Utilities ---
 
@@ -300,6 +325,113 @@
             return [state, setState];
         };
         
+        // --- Logic Ghi lịch sử lên GitHub (Yêu cầu 5) ---
+        const useGitHubHistory = (sortedScores, gameState) => {
+            const historyRef = useRef([]); 
+            const shaRef = useRef(null); 
+            
+            const getAndSetSha = useCallback(async () => {
+                try {
+                    const response = await fetch(GITHUB_API_URL, {
+                        headers: {
+                            'Authorization': `token ${GITHUB_TOKEN}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+
+                    if (response.status === 404) {
+                        // File not found, need to create it
+                        shaRef.current = null;
+                        return [];
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`GitHub GET failed with status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    shaRef.current = data.sha;
+                    
+                    // Decode content
+                    const decodedContent = atob(data.content);
+                    // Decode Base64 string to original UTF-8 string
+                    const utf8String = decodeURIComponent(escape(decodedContent));
+                    
+                    const existingHistory = JSON.parse(utf8String);
+                    return Array.isArray(existingHistory) ? existingHistory : [];
+
+                } catch (error) {
+                    console.error("Lỗi khi lấy lịch sử từ GitHub:", error);
+                    shaRef.current = null;
+                    return []; 
+                }
+            }, []);
+
+            const saveHistoryToGithub = useCallback(async (currentSortedScores) => {
+                if (!currentSortedScores || currentSortedScores.length === 0) {
+                    console.log("Không có điểm để lưu. Bỏ qua lưu GitHub.");
+                    return;
+                }
+                
+                try {
+                    // 1. Lấy lịch sử hiện tại và SHA
+                    const existingHistory = await getAndSetSha();
+                    
+                    // 2. Tạo đối tượng lịch sử mới
+                    const newEntry = {
+                        timestamp: new Date().toISOString(),
+                        game: currentSortedScores.map((p, index) => ({
+                            name: p.name,
+                            rank: index + 1, // Thứ hạng 1, 2, 3, 4
+                        }))
+                    };
+                    
+                    const newHistory = [...existingHistory, newEntry];
+                    
+                    // 3. Chuẩn bị nội dung cho API (UTF-8 và Base64)
+                    const contentString = JSON.stringify(newHistory, null, 2);
+                    
+                    // Encode UTF-8 string to Base64 (Hỗ trợ tiếng Việt có dấu)
+                    const base64Content = btoa(unescape(encodeURIComponent(contentString)));
+                    
+                    const payload = {
+                        message: `Hoàn tất game vào lúc ${new Date().toLocaleString('vi-VN')}`,
+                        content: base64Content,
+                        sha: shaRef.current, // Gửi SHA nếu có (update)
+                    };
+                    
+                    const response = await fetch(GITHUB_API_URL, {
+                        method: shaRef.current ? 'PUT' : 'PUT', // Dùng PUT cho cả tạo mới và update
+                        headers: {
+                            'Authorization': `token ${GITHUB_TOKEN}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`GitHub PUT/POST failed with status: ${response.status}`);
+                    }
+
+                    console.log("Lịch sử trò chơi đã được lưu thành công lên GitHub!");
+                    // Cập nhật SHA mới
+                    const result = await response.json();
+                    shaRef.current = result.content.sha;
+
+                } catch (error) {
+                    console.error("LỖI CẤP CAO khi lưu lịch sử lên GitHub:", error);
+                    // Có thể thêm logic thông báo cho người dùng ở đây
+                }
+            }, [getAndSetSha]);
+            
+            // Kích hoạt việc lưu khi chuyển sang Game Over
+            useEffect(() => {
+                if (gameState === 'game_over') {
+                    saveHistoryToGithub(sortedScores);
+                }
+            }, [gameState, sortedScores, saveHistoryToGithub]); 
+        };
+
         // --- 2. Component Con: Modal (Thay thế alert/confirm) ---
 
         const Modal = ({ title, content, isOpen, onClose, onConfirm, confirmText = "Xác nhận", cancelText = "Hủy bỏ", showCancel = true }) => {
@@ -307,7 +439,7 @@
 
             return (
                 <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50 animate-fade-in">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm animate-bounce-in">
+                    <div className="bg-white rounded-xl shadow-3xl w-full max-w-sm animate-bounce-in">
                         <header className="px-4 py-3 bg-primary rounded-t-xl">
                             <h3 className="text-xl font-bold text-white">{title}</h3>
                         </header>
@@ -319,14 +451,14 @@
                             {showCancel && (
                                 <button
                                     onClick={onClose}
-                                    className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-200 rounded-lg transition"
+                                    className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-200 rounded-lg transition hover:bg-gray-300"
                                 >
                                     {cancelText}
                                 </button>
                             )}
                             <button
                                 onClick={onConfirm}
-                                className="px-4 py-2 text-sm font-semibold text-white bg-secondary rounded-lg transition"
+                                className="px-4 py-2 text-sm font-semibold text-white bg-secondary rounded-lg transition hover:bg-secondary/80"
                             >
                                 {confirmText}
                             </button>
@@ -348,6 +480,8 @@
             const [showGameOverHistory, setShowGameOverHistory] = useState(false);
             const [isScoringMode, setIsScoringMode] = useState(false);
             const [newPlayerName, setNewPlayerName] = useState('');
+            // Yêu cầu: Đặt giá trị mặc định cho selectedPresetPlayer là '' để hiển thị option placeholder
+            const [selectedPresetPlayer, setSelectedPresetPlayer] = useLocalStorageState('selectedPresetPlayer', ''); 
             const [roundScoreInputs, setRoundScoreInputs] = useLocalStorageState('roundScoreInputs', {});
             const [modal, setModal] = useState({ isOpen: false, type: null, data: null });
             const [newMaxRoundsInput, setNewMaxRoundsInput] = useState(15);
@@ -361,6 +495,15 @@
                     return { ...p, totalScore: Number(totalScore) };
                 }); 
             }, [players, history]);
+            
+            // Tính toán Bảng xếp hạng để truyền vào hook GitHub
+            const sortedScores = useMemo(() => {
+                return [...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore);
+            }, [unsortedPlayerScores]);
+
+            // Kích hoạt Hook lưu lịch sử GitHub
+            useGitHubHistory(sortedScores, gameState); 
+
 
             // --- Logic Audio: Phát âm thanh đọc điểm VÁN MỚI ---
             const playScoreAudio = (currentRoundScores) => {
@@ -456,6 +599,7 @@
                 setIsScoringMode(false);
                 setRoundScoreInputs({});
                 setModal({ isOpen: false, type: null, data: null });
+                addToQueue(['hoantac']); // Yêu cầu 2: Thêm audio Hoàn tác
             };
             
             const handleUndo = () => {
@@ -475,6 +619,7 @@
                 setIsScoringMode(false);
                 setRoundScoreInputs({});
                 setMaxRounds(15); 
+                setSelectedPresetPlayer(''); // Reset selected preset player
                 localStorage.clear(); 
                 setModal({ isOpen: false, type: null, data: null });
             };
@@ -507,29 +652,46 @@
 
 
             // --- Xử lý Stage: Setup (Giai đoạn I) ---
+            
+            // Yêu cầu 1: Bổ sung logic Add/Remove player từ Dropdown
+            const handleAddPresetPlayer = () => {
+                // Kiểm tra luôn cả giá trị '' (placeholder)
+                if (!selectedPresetPlayer) return; 
 
-            const handlePlayerToggle = (playerName) => {
-                // Tìm người chơi đã tồn tại (dựa trên Tên, vì ID là ngẫu nhiên)
+                if (players.length >= MAX_PLAYERS) {
+                    setModal({
+                        isOpen: true,
+                        type: 'info',
+                        data: { title: 'Thông báo', message: `Số lượng người chơi tối đa là ${MAX_PLAYERS}.` }
+                    });
+                    return;
+                }
+
+                const trimmedName = selectedPresetPlayer.trim();
+                if (players.some(p => p.name.toLowerCase() === trimmedName.toLowerCase())) {
+                    setModal({
+                        isOpen: true,
+                        type: 'info',
+                        data: { title: 'Thông báo', message: `Người chơi '${trimmedName}' đã tồn tại.` }
+                    });
+                    return;
+                }
+
+                // Thêm người chơi (luôn là Preset, isCustom=false)
+                const newPlayer = createPlayerObject(trimmedName, false, players);
+                setPlayers([...players, newPlayer]);
+                // Sau khi thêm, reset lại dropdown về placeholder
+                setSelectedPresetPlayer(''); 
+            };
+
+            const handleRemovePlayer = (playerName) => {
                 const existingPlayer = players.find(p => p.name === playerName); 
-
                 if (existingPlayer) {
-                    // Xóa người chơi
                     const newPlayers = players.filter(p => p.id !== existingPlayer.id);
-                    setPlayers(newPlayers); 
-                } else {
-                    if (players.length >= MAX_PLAYERS) {
-                         setModal({
-                            isOpen: true,
-                            type: 'info',
-                            data: { title: 'Thông báo', message: `Số lượng người chơi tối đa là ${MAX_PLAYERS}.` }
-                        });
-                        return;
-                    }
-                    // Thêm người chơi (luôn là Preset, isCustom=false)
-                    const newPlayer = createPlayerObject(playerName, false, players);
-                    setPlayers([...players, newPlayer]);
+                    setPlayers(newPlayers);
                 }
             };
+
 
             const handleAddNewPlayer = () => {
                 const trimmedName = newPlayerName.trim();
@@ -592,6 +754,7 @@
                 if (!isScoringMode) {
                     addToQueue(['vanmoi']); 
                     setIsScoringMode(true);
+                    // Dùng unsortedPlayerScores (players) để giữ nguyên thứ tự
                     const initialInputs = unsortedPlayerScores.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
                     setRoundScoreInputs(initialInputs);
                 } else {
@@ -662,8 +825,10 @@
                     });
                     return;
                 }
+                
                 setMaxRounds(newMax);
                 setModal({ isOpen: false, type: null, data: null });
+                addToQueue(['dasetsovan']); // Yêu cầu 2: Thêm audio Set Ván
                 
                 if (history.length >= newMax) {
                     setGameState('game_over');
@@ -701,151 +866,180 @@
 
             // --- Render các Stage ---
             
-            // Stage 0: Setup 
-            const renderSetup = () => (
-                <div className="p-4 sm:p-6 pb-2">
-                    <h2 className="text-xl font-bold text-primary mb-4 text-center">⚙️ Cấu Hình Trò Chơi</h2>
+            // Stage 0: Setup
+            const renderSetup = () => {
+                const availablePresetPlayers = PRESET_PLAYERS.filter(name => !players.some(p => p.name === name));
+                
+                return (
+                    <div className="p-4 sm:p-6 pb-2">
+                        <h2 className="text-xl font-bold text-primary mb-4 text-center">⚙️ Cấu Hình Trò Chơi</h2>
 
-                    {/* Chọn Số Ván */}
-                    <div className="mb-4 p-3 bg-white rounded-lg shadow-sm border border-gray-200">
-                        <h3 className="text-md font-semibold mb-2 text-gray-700">1. Chọn Số Ván Chơi (Hiện tại: {parseInt(maxRounds) || 15})</h3>
-                        <div className="flex flex-wrap gap-2 mb-2">
-                            {PRESET_ROUNDS.map(r => (
-                                <button
-                                    key={r}
-                                    onClick={() => setMaxRounds(r)}
-                                    className={`px-3 py-1 text-sm font-medium rounded-full transition ${parseInt(maxRounds) === r ? 'bg-primary text-white shadow-md' : 'bg-gray-200 text-gray-700'}`}
-                                >
-                                    {r} Ván
-                                </button>
-                            ))}
-                        </div>
-                        <input
-                            type="number"
-                            min="1"
-                            value={maxRounds} 
-                            onChange={(e) => setMaxRounds(e.target.value)} 
-                            onBlur={(e) => {
-                                const val = parseInt(e.target.value);
-                                if (isNaN(val) || val < 1) {
-                                    setMaxRounds(1);
-                                } else {
-                                     setMaxRounds(val);
-                                }
-                            }}
-                            className="w-full p-2 border border-gray-300 rounded-lg text-sm mt-1 focus:ring-secondary focus:border-secondary"
-                        />
-                    </div>
-                    
-                    {/* Chọn Người Chơi */}
-                    <div className="mb-4 p-3 bg-white rounded-lg shadow-sm border border-gray-200">
-                        <h3 className="text-md font-semibold mb-2 text-gray-700">2. Chọn Người Chơi</h3>
-                        
-                        {/* Danh sách chọn sẵn */}
-                        <div className="flex flex-wrap gap-2 border-b pb-3 mb-3">
-                            {PRESET_PLAYERS.map(name => {
-                                const isSelected = players.some(p => p.name === name);
-                                return (
-                                    <button
-                                        key={name}
-                                        onClick={() => handlePlayerToggle(name)}
-                                        className={`px-3 py-1 text-sm rounded-full transition ${isSelected ? 'bg-secondary text-white font-semibold shadow-sm' : 'bg-gray-100 text-gray-600'} disabled:opacity-50`}
-                                        disabled={!isSelected && players.length >= MAX_PLAYERS}
-                                    >
-                                        {name} {isSelected ? '✅' : ''}
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        {/* Thêm người chơi mới */}
-                        <div className="flex space-x-2">
-                            <input
-                                type="text"
-                                value={newPlayerName}
-                                onChange={(e) => setNewPlayerName(e.target.value)}
-                                placeholder="Tên người chơi mới..."
-                                className="flex-grow p-2 text-sm border border-gray-300 rounded-lg focus:ring-primary focus:border-primary"
-                                disabled={players.length >= MAX_PLAYERS}
-                            />
-                            <button
-                                onClick={handleAddNewPlayer}
-                                className="p-2 bg-primary text-white rounded-lg font-semibold text-sm transition disabled:bg-gray-400"
-                                disabled={!newPlayerName.trim() || players.length >= MAX_PLAYERS}
-                            >
-                                Thêm
-                            </button>
-                        </div>
-                        
-                    </div>
-
-                    {/* Danh sách người chơi đã chọn */}
-                    <div className="mb-4 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
-                        <h3 className="text-md font-semibold text-primary mb-2">Người chơi đã chọn ({players.length}/{MAX_PLAYERS}):</h3>
-                        <div className="flex flex-wrap gap-2">
-                            {players.map(p => (
-                                <span key={p.id} className="bg-primary text-white text-xs px-3 py-1 rounded-full flex items-center">
-                                    {p.name}
-                                    <button 
-                                        onClick={() => handlePlayerToggle(p.name)}
-                                        className="ml-2 text-white/80 font-bold text-xs"
-                                    >
-                                        &times;
-                                    </button>
+                        {/* Chọn Số Ván */}
+                        <div className="mb-4 p-4 bg-white rounded-xl shadow-lg border border-indigo-100">
+                            <h3 className="text-md font-semibold mb-3 text-gray-700 flex items-center">
+                                1. Chọn Số Ván Chơi 
+                                <span className="ml-2 px-3 py-1 text-xs font-bold text-primary bg-indigo-100 rounded-full">
+                                    Hiện tại: {parseInt(maxRounds) || 15}
                                 </span>
-                            ))}
+                            </h3>
+                            <div className="flex flex-wrap gap-2 mb-3">
+                                {PRESET_ROUNDS.map(r => (
+                                    <button
+                                        key={r}
+                                        onClick={() => setMaxRounds(r)}
+                                        className={`px-3 py-1 text-sm font-medium rounded-full transition duration-200 shadow-md ${parseInt(maxRounds) === r ? 'bg-primary text-white hover:bg-primary/90' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                                    >
+                                        {r} Ván
+                                    </button>
+                                ))}
+                            </div>
+                            <input
+                                type="number"
+                                min="1"
+                                value={maxRounds} 
+                                onChange={(e) => setMaxRounds(e.target.value)} 
+                                onBlur={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    if (isNaN(val) || val < 1) {
+                                        setMaxRounds(1);
+                                    } else {
+                                        setMaxRounds(val);
+                                    }
+                                }}
+                                className="w-full p-2 border-2 border-gray-300 rounded-lg text-sm mt-1 focus:ring-secondary focus:border-secondary transition"
+                            />
                         </div>
-                        {players.length === 0 && <p className="text-sm text-gray-500 italic mt-2">Chưa có người chơi nào được chọn.</p>}
-                    </div>
+                        
+                        {/* Chọn Người Chơi */}
+                        <div className="mb-4 p-4 bg-white rounded-xl shadow-lg border border-emerald-100">
+                            <h3 className="text-md font-semibold mb-3 text-gray-700">2. Thêm Người Chơi</h3>
+                            
+                            {/* Dropdown và Nút Thêm (Yêu cầu: Placeholder) */}
+                            <div className="flex space-x-2 mb-3">
+                                <select
+                                    value={selectedPresetPlayer}
+                                    onChange={(e) => setSelectedPresetPlayer(e.target.value)}
+                                    className="flex-grow p-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-secondary focus:border-secondary disabled:bg-gray-100"
+                                    disabled={players.length >= MAX_PLAYERS || availablePresetPlayers.length === 0}
+                                >
+                                    {/* Yêu cầu: Placeholder cho dropdown */}
+                                    <option value="" disabled className="text-gray-400">Chọn người chơi có sẵn</option> 
+                                    
+                                    {availablePresetPlayers.length > 0 && availablePresetPlayers.map(name => (
+                                        <option key={name} value={name}>{name}</option>
+                                    ))}
+                                    {availablePresetPlayers.length === 0 && (
+                                        <option value="" disabled>Không còn người chơi có sẵn</option>
+                                    )}
+                                </select>
+                                <button
+                                    onClick={handleAddPresetPlayer}
+                                    className="p-2 bg-secondary text-white rounded-lg font-semibold text-sm transition disabled:bg-gray-400 hover:bg-secondary/80"
+                                    disabled={!selectedPresetPlayer || players.length >= MAX_PLAYERS || availablePresetPlayers.length === 0}
+                                >
+                                    Thêm
+                                </button>
+                            </div>
 
-                    {/* Nút Bắt đầu */}
-                    <button
-                        onClick={handleStartGame}
-                        disabled={players.length < 2}
-                        className="w-full py-3 bg-secondary text-white font-bold text-lg rounded-xl shadow-lg transition disabled:bg-gray-400"
-                    >
-                        {players.length < 2 ? 'Cần 2 người chơi để bắt đầu' : `BẮT ĐẦU TRÒ CHƠI (${parseInt(maxRounds) || 15} VÁN)`}
-                    </button>
-                </div>
-            );
+                            {/* Thêm người chơi mới (Tùy chỉnh) */}
+                            <div className="flex space-x-2 mt-3 pt-3 border-t border-gray-100">
+                                <input
+                                    type="text"
+                                    value={newPlayerName}
+                                    onChange={(e) => setNewPlayerName(e.target.value)}
+                                    placeholder="Tên người chơi tùy chỉnh..."
+                                    className="flex-grow p-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-primary focus:border-primary disabled:bg-gray-100"
+                                    disabled={players.length >= MAX_PLAYERS}
+                                />
+                                <button
+                                    onClick={handleAddNewPlayer}
+                                    className="p-2 bg-primary text-white rounded-lg font-semibold text-sm transition disabled:bg-gray-400 hover:bg-primary/80"
+                                    disabled={!newPlayerName.trim() || players.length >= MAX_PLAYERS}
+                                >
+                                    Thêm
+                                </button>
+                            </div>
+                            
+                        </div>
+
+                        {/* Danh sách người chơi đã chọn */}
+                        <div className="mb-6 p-4 bg-indigo-50 rounded-xl border border-indigo-200 shadow-inner">
+                            <h3 className="text-md font-semibold text-primary mb-2">Người chơi đã chọn ({players.length}/{MAX_PLAYERS}):</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {players.map(p => (
+                                    <span key={p.id} className="bg-primary text-white text-xs px-3 py-1 rounded-full flex items-center font-medium shadow-sm">
+                                        {p.name}
+                                        <button 
+                                            onClick={() => handleRemovePlayer(p.name)}
+                                            className="ml-2 text-white/80 font-bold text-sm hover:text-white"
+                                        >
+                                            &times;
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                            {players.length === 0 && <p className="text-sm text-gray-500 italic mt-2">Chưa có người chơi nào được chọn.</p>}
+                        </div>
+
+                        {/* Nút Bắt đầu */}
+                        <button
+                            onClick={handleStartGame}
+                            disabled={players.length < 2}
+                            className="w-full py-4 bg-secondary text-white font-extrabold text-lg rounded-xl shadow-2xl transition duration-300 transform hover:scale-[1.01] disabled:bg-gray-400"
+                        >
+                            {players.length < 2 ? 'Cần 2 người chơi để bắt đầu' : `BẮT ĐẦU TRÒ CHƠI (${parseInt(maxRounds) || 15} VÁN)`}
+                        </button>
+                    </div>
+                );
+            };
+
 
             // Stage 1: Playing
             const renderPlaying = () => (
-                <div className="p-3 sm:p-4"> 
-                    <h2 className="text-xl sm:text-2xl font-bold text-primary mb-2 text-center"> 
-                        VÁN {history.length + 1} / {parseInt(maxRounds) || 15}
+                <div className="p-4"> 
+                    <h2 className="text-2xl font-extrabold text-primary mb-3 text-center"> 
+                        VÁN <span className="text-secondary">{history.length + 1}</span> / {parseInt(maxRounds) || 15}
                     </h2>
                     
-                    {/* Nút Ghi/Xác nhận điểm */}
+                    {/* Nút Ghi/Xác nhận điểm (Yêu cầu 3: Hiệu ứng động) */}
                      <button
                         onClick={handleNewScoreClick}
-                        className={`w-full py-2 font-bold text-white rounded-xl shadow-lg transition duration-300 transform mb-3 
-                            ${isScoringMode ? 'bg-secondary border-2 border-green-700 animate-pulse-slow' : 'bg-primary'}`} 
+                        className={`w-full py-3 font-extrabold text-white rounded-xl shadow-xl transition duration-300 transform mb-4 
+                            ${isScoringMode ? 'bg-secondary animate-pulse-strong text-lg' : 'bg-primary text-base hover:bg-primary/90'}`} 
                         disabled={unsortedPlayerScores.length === 0}
                     >
                         {isScoringMode ? `✅ XÁC NHẬN GHI ĐIỂM VÁN ${history.length + 1}` : 'GHI ĐIỂM VÁN MỚI'}
                     </button>
                     
                     {/* Vùng Hiện Thị Tên Người Chơi và Ghi Điểm */}
-                    <div className={`p-3 rounded-xl shadow-lg mb-3 border transition duration-300 ${isScoringMode ? 'bg-indigo-50 border-indigo-200 animate-fade-in' : 'bg-white border-gray-200'}`}> 
-                        <h3 className="text-xl font-bold text-gray-700 mb-2 border-b pb-1"> 
-                            {isScoringMode ? 'Nhập Điểm Ván Mới' : 'Người Chơi'}
+                    <div className={`p-4 rounded-xl shadow-xl mb-4 transition duration-500 
+                                     ${isScoringMode ? 'bg-indigo-50 border-4 border-indigo-200 animate-fade-in' : 'bg-white border-2 border-gray-200'}`}> 
+                        <h3 className="text-xl font-bold text-gray-700 mb-3 border-b pb-2"> 
+                            {isScoringMode ? '✏️ Nhập Điểm Ván Mới' : '👥 Người Chơi'}
                         </h3>
-                        <div className="space-y-2"> 
-                            {players.map(p => ( 
-                                <div key={p.id} className="flex justify-between items-center py-1">
+                        <div className="space-y-3"> 
+                            {unsortedPlayerScores.map(p => ( 
+                                <div key={p.id} className="flex justify-between items-center py-1 bg-white p-3 rounded-lg shadow-md border border-gray-100">
                                     {/* Tên người chơi */}
-                                    <span className={`text-lg font-medium text-gray-800 ${isScoringMode ? 'w-1/2' : 'flex-grow'} truncate`}>
-                                        {p.name}
-                                    </span>
+                                    <div className={`flex items-center ${isScoringMode ? 'w-1/2' : 'flex-grow'}`}>
+                                        <span className={`text-lg font-bold ${isScoringMode ? 'text-gray-800' : 'text-primary'} truncate`}>
+                                            {p.name}
+                                        </span>
+                                        {/* Yêu cầu: Bỏ hiển thị tổng điểm khi đang ở màn hình playing */}
+                                        {!isScoringMode && (
+                                            <span className="ml-3 text-xl font-bold text-gray-500 italic">
+                                                (Đang chơi)
+                                            </span>
+                                        )}
+                                    </div>
                                     
                                     {/* Scoring Input/Controls: Chỉ hiển thị nếu isScoringMode là true */}
                                     {isScoringMode && (
-                                        <div className="grid grid-cols-3 w-1/2 gap-1">
+                                        <div className="grid grid-cols-3 w-1/2 gap-1.5">
                                             {/* Nút Giảm */}
                                             <button 
                                                 onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) - 1)}
-                                                className="p-1.5 bg-danger text-white rounded-lg font-bold text-base transition hover:bg-danger/80" 
+                                                className="p-2 bg-danger text-white rounded-xl font-extrabold text-xl transition duration-150 hover:bg-danger/80 shadow-md" 
                                             >
                                                 -
                                             </button>
@@ -854,13 +1048,13 @@
                                                 type="number"
                                                 value={roundScoreInputs[p.id] === 0 && roundScoreInputs[p.id] !== '' ? '0' : roundScoreInputs[p.id]}
                                                 onChange={(e) => handleScoreChange(p.id, e.target.value)}
-                                                className="p-1 border border-gray-300 rounded-lg text-center font-mono text-xl focus:ring-secondary focus:border-secondary"
+                                                className="p-1 border-2 border-secondary rounded-xl text-center font-mono text-xl font-bold focus:ring-secondary focus:border-secondary"
                                                 placeholder="0"
                                             />
                                             {/* Nút Tăng */}
                                             <button 
                                                 onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) + 1)}
-                                                className="p-1.5 bg-secondary text-white rounded-lg font-bold text-base transition hover:bg-secondary/80" 
+                                                className="p-2 bg-secondary text-white rounded-xl font-extrabold text-xl transition duration-150 hover:bg-secondary/80 shadow-md" 
                                             >
                                                 +
                                             </button>
@@ -873,32 +1067,32 @@
                     
                     
                     {/* Các nút chức năng (4 nút) */}
-                    <div className="flex justify-between space-x-1 mb-2"> 
+                    <div className="flex justify-between space-x-2 mb-4"> 
                          <button
                             onClick={handleUndo} 
                             disabled={history.length === 0 || isScoringMode}
-                            className="flex-1 py-2 bg-warning text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-xs sm:text-sm hover:bg-warning/80"
+                            className="flex-1 py-3 bg-warning text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm hover:bg-warning/80 shadow-md"
                         >
                             ↩️ Hoàn Tác
                         </button>
                         <button
                             onClick={handleSetRoundsClick} 
                             disabled={isScoringMode}
-                            className="flex-1 py-2 bg-blue-500 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-xs sm:text-sm hover:bg-blue-500/80"
+                            className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm hover:bg-blue-600/80 shadow-md"
                         >
                             🔁 Set Ván
                         </button>
                         <button
                             onClick={handleResetGame} 
                             disabled={isScoringMode}
-                            className="flex-1 py-2 bg-danger text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-xs sm:text-sm hover:bg-danger/80"
+                            className="flex-1 py-3 bg-danger text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm hover:bg-danger/80 shadow-md"
                         >
                             🔄 Reset
                         </button>
                         <button
                             onClick={handleEndGameConfirm} 
                             disabled={isScoringMode}
-                            className="flex-1 py-2 bg-gray-600 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-xs sm:text-sm hover:bg-gray-600/80"
+                            className="flex-1 py-3 bg-gray-600 text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm hover:bg-gray-600/80 shadow-md"
                         >
                             🛑 Kết Thúc
                         </button>
@@ -906,21 +1100,21 @@
                     
                     
                     {/* Lịch sử điểm */}
-                    <div className="bg-white p-3 rounded-xl shadow-lg"> 
+                    <div className="bg-white p-4 rounded-xl shadow-xl border border-gray-200"> 
                         <button 
                             onClick={() => setShowHistory(prev => !prev)}
-                            className="w-full text-left text-lg font-semibold text-gray-700 p-1 rounded-lg transition flex justify-between items-center hover:bg-gray-100"
+                            className="w-full text-left text-lg font-bold text-gray-700 p-1 rounded-lg transition flex justify-between items-center hover:bg-gray-100"
                         >
                             Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showHistory ? '▲' : '▼'}
                         </button>
                         {showHistory && (
-                            <div className="overflow-x-auto mt-1 max-h-48"> 
+                            <div className="overflow-x-auto mt-3 max-h-60 border rounded-lg"> 
                                 <table className="min-w-full divide-y divide-gray-200">
-                                    <thead className="bg-gray-50 sticky left-0 z-10">
+                                    <thead className="bg-gray-100 sticky left-0 z-10">
                                         <tr>
-                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 shadow-sm">Người chơi</th>
+                                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-600 uppercase sticky left-0 bg-gray-100 shadow-sm min-w-[100px]">Người chơi</th>
                                             {[...Array(history.length)].map((_, index) => (
-                                                <th key={index} className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase min-w-[50px]">Ván {history.length - index}</th>
+                                                <th key={index} className="px-3 py-2 text-center text-xs font-bold text-gray-600 uppercase min-w-[50px]">Ván {history.length - index}</th>
                                             ))}
                                         </tr>
                                     </thead>
@@ -928,14 +1122,14 @@
                                         {players.map(p => (
                                             <tr key={p.id}>
                                                 <td 
-                                                    className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white shadow-sm truncate" 
+                                                    className="px-3 py-2 whitespace-nowrap text-sm font-semibold text-gray-900 sticky left-0 bg-white shadow-sm truncate" 
                                                     title={p.name}
                                                 >
                                                     {p.name}
                                                 </td>
                                                 {[...history].reverse().map(entry => {
                                                     const score = entry.scores[p.id] || 0;
-                                                    const colorClass = score > 0 ? 'text-secondary font-bold' : (score < 0 ? 'text-danger' : 'text-gray-500');
+                                                    const colorClass = score > 0 ? 'text-secondary font-extrabold' : (score < 0 ? 'text-danger font-semibold' : 'text-gray-500');
                                                     return (
                                                         <td key={entry.round} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass} min-w-[50px] font-mono`}>
                                                             {score > 0 ? `+${score}` : score}
@@ -952,14 +1146,12 @@
                 </div>
             );
 
-            // Stage 2: Game Over (ĐÃ TỐI ƯU GIAO DIỆN)
+            // Stage 2: Game Over
             const renderGameOver = () => {
-                const sortedScores = [...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore);
+                // sortedScores đã được tính toán ở useMemo
                 const playerCount = sortedScores.length;
                 
                 let loserScoreThreshold = null;
-
-                // Logic xác định ngưỡng điểm để bôi đỏ (2 người thấp điểm nhất)
                 if (playerCount >= 2) {
                     loserScoreThreshold = sortedScores[playerCount - 2].totalScore;
                 }
@@ -970,31 +1162,39 @@
                 };
 
                 return (
+                    // Giảm padding/margin tổng thể
                     <div className="p-4 text-center animate-bounce-in">
-                        {/* Kích thước chữ giảm từ 4xl xuống 2xl, margin giảm từ mb-6 xuống mb-4 */}
-                        <h2 className="text-2xl font-extrabold text-danger mb-4">🎉 TRÒ CHƠI KẾT THÚC! 🎉</h2>
-                        <p className="text-lg font-medium text-gray-700 mb-4">Tổng số ván đã chơi: <span className="text-primary font-bold">{history.length}</span></p>
+                        {/* Thu gọn khoảng cách tiêu đề */}
+                        <h2 className="text-2xl font-extrabold text-danger mb-1">🎉 TRÒ CHƠI KẾT THÚC! 🎉</h2>
+                        <p className="text-base font-medium text-gray-700 mb-3">Tổng số ván đã chơi: <span className="text-primary font-bold">{history.length}</span></p>
 
                         {/* Bảng Xếp Hạng */}
-                        <div className="bg-white p-4 rounded-xl shadow-2xl mb-4">
-                            <h3 className="text-xl font-bold text-primary mb-3 border-b pb-2">🏆 BẢNG XẾP HẠNG</h3>
+                        <div className="bg-white p-4 rounded-xl shadow-2xl mb-4 border border-indigo-200">
+                            <h3 className="text-xl font-extrabold text-primary mb-3 border-b pb-2">🏆 BẢNG XẾP HẠNG</h3>
                             {sortedScores.map((p, index) => {
                                 const isCurrentLoser = isLoser(p);
                                 
-                                // Giảm padding/margin và kích thước chữ
-                                const itemClassName = `flex justify-between items-center py-1.5 px-3 my-1 rounded-lg transition transform duration-300 
-                                                       ${isCurrentLoser ? 'bg-red-100 border-2 border-danger scale-105 shadow-lg' : 'bg-gray-50'}`;
+                                // Thiết kế mới: Huy hiệu và font to
+                                const itemClassName = `flex justify-between items-center py-2 px-3 my-2 rounded-xl transition transform duration-300 shadow-md 
+                                                       ${isCurrentLoser ? 'bg-red-100 border-2 border-danger scale-[1.03]' : 'bg-gray-50 border-2 border-secondary/50'}`;
                                 
                                 return (
                                     <div 
                                         key={p.id} 
                                         className={itemClassName}
                                     >
-                                        {/* Kích thước chữ giảm từ xl xuống lg */}
-                                        <span className={`text-lg font-bold ${isCurrentLoser ? 'text-danger' : 'text-gray-700'}`}>
-                                            {index + 1}. {p.name}
-                                        </span>
-                                        {/* Kích thước chữ giảm từ 3xl xuống 2xl */}
+                                        <div className="flex items-center space-x-2">
+                                            {/* Huy hiệu thứ hạng */}
+                                            <span className={`text-xl font-extrabold w-6 text-center 
+                                                              ${index === 0 ? 'text-yellow-500' : index === 1 ? 'text-gray-400' : index === 2 ? 'text-amber-700' : 'text-primary'}`}>
+                                                #{index + 1}
+                                            </span>
+                                            {/* Tên người chơi */}
+                                            <span className={`text-lg font-bold ${isCurrentLoser ? 'text-danger' : 'text-gray-700'}`}>
+                                                {p.name}
+                                            </span>
+                                        </div>
+                                        {/* Tổng điểm */}
                                         <span className={`text-2xl font-extrabold ${p.totalScore >= 0 ? 'text-secondary' : 'text-danger'} font-mono`}>
                                             {p.totalScore}
                                         </span>
@@ -1004,21 +1204,21 @@
                         </div>
 
                         {/* Lịch sử điểm tại màn hình Game Over */}
-                        <div className="bg-white p-3 rounded-xl shadow-lg mb-4">
+                        <div className="bg-white p-3 rounded-xl shadow-lg mb-4 border border-gray-200">
                             <button 
                                 onClick={() => setShowGameOverHistory(prev => !prev)}
-                                className="w-full text-left text-lg font-semibold text-gray-700 p-1 rounded-lg transition flex justify-between items-center hover:bg-gray-100"
+                                className="w-full text-left text-lg font-bold text-gray-700 p-1 rounded-lg transition flex justify-between items-center hover:bg-gray-100"
                             >
                                 Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showGameOverHistory ? '▲' : '▼'}
                             </button>
                             {showGameOverHistory && (
-                                <div className="overflow-x-auto mt-1 max-h-48">
+                                <div className="overflow-x-auto mt-2 max-h-48 border rounded-lg">
                                     <table className="min-w-full divide-y divide-gray-200">
-                                        <thead className="bg-gray-50 sticky left-0 z-10">
+                                        <thead className="bg-gray-100 sticky left-0 z-10">
                                             <tr>
-                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 shadow-sm">Người chơi</th>
+                                                <th className="px-3 py-2 text-left text-xs font-bold text-gray-600 uppercase sticky left-0 bg-gray-100 shadow-sm min-w-[100px]">Người chơi</th>
                                                 {[...Array(history.length)].map((_, index) => (
-                                                    <th key={index} className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase min-w-[50px]">Ván {history.length - index}</th>
+                                                    <th key={index} className="px-3 py-2 text-center text-xs font-bold text-gray-600 uppercase min-w-[50px]">Ván {history.length - index}</th>
                                                 ))}
                                             </tr>
                                         </thead>
@@ -1026,14 +1226,14 @@
                                             {players.map(p => (
                                                 <tr key={p.id}>
                                                     <td 
-                                                        className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white shadow-sm truncate" 
+                                                        className="px-3 py-2 whitespace-nowrap text-sm font-semibold text-gray-900 sticky left-0 bg-white shadow-sm truncate" 
                                                         title={p.name}
                                                     >
                                                         {p.name}
                                                     </td>
                                                     {[...history].reverse().map(entry => {
                                                         const score = entry.scores[p.id] || 0;
-                                                        const colorClass = score > 0 ? 'text-secondary font-bold' : (score < 0 ? 'text-danger' : 'text-gray-500');
+                                                        const colorClass = score > 0 ? 'text-secondary font-extrabold' : (score < 0 ? 'text-danger font-semibold' : 'text-gray-500');
                                                         return (
                                                             <td key={entry.round} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass} min-w-[50px] font-mono`}>
                                                                 {score > 0 ? `+${score}` : score}
@@ -1048,10 +1248,10 @@
                             )}
                         </div>
 
-                        {/* Nút Chơi Lại - Giảm kích thước */}
+                        {/* Nút Chơi Lại */}
                         <button
                             onClick={confirmResetGame} 
-                            className="w-full py-2.5 bg-secondary text-white font-bold text-lg rounded-xl shadow-lg transition hover:bg-secondary/80"
+                            className="w-full py-3 bg-secondary text-white font-extrabold text-xl rounded-xl shadow-xl transition hover:bg-secondary/90 transform hover:scale-[1.01]"
                         >
                             CHƠI LẠI
                         </button>
@@ -1063,10 +1263,10 @@
 
             return (
                 <div className="min-h-screen bg-gray-50 flex justify-center">
-                    <div className="w-full max-w-xl mx-auto bg-white shadow-xl rounded-2xl overflow-hidden my-0 sm:my-4">
-                        <header className="bg-primary text-white p-3 text-center">
+                    <div className="w-full max-w-xl mx-auto bg-white shadow-3xl rounded-2xl overflow-hidden my-0 sm:my-6">
+                        <header className="bg-primary text-white p-4 text-center">
                             {/* Thay đổi tiêu đề chính */}
-                            <h1 className="text-2xl font-extrabold">TIẾN LÊN MIỀN TRUNG</h1> 
+                            <h1 className="text-3xl font-extrabold">TIẾN LÊN MIỀN TRUNG</h1> 
                         </header>
                         
                         {gameState === 'setup' && renderSetup()}

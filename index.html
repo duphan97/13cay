@@ -218,27 +218,32 @@
             }, [playNext, preloadAudioSequence]);
 
 
+            // ĐÃ KHẮC PHỤC: Đảm bảo thứ tự được giữ nguyên sau khi tất cả preload xong
             const addMultipleSequencesToQueue = useCallback((sequences) => {
-                let initialPlayTriggered = false;
                 
-                const allSequencesLoaded = sequences.map(soundNamesArray => {
-                     return preloadAudioSequence(soundNamesArray)
-                        .then(preloadedAudioObjects => {
-                            if (preloadedAudioObjects.length > 0) {
-                                audioQueue.current.push(preloadedAudioObjects);
-                                if (!isPlaying.current && !initialPlayTriggered) {
-                                    initialPlayTriggered = true;
-                                    playNext();
-                                }
-                            }
-                        });
+                // 1. Tạo mảng các Promise để preload tất cả các chuỗi
+                const loadingPromises = sequences.map(soundNamesArray => {
+                     return preloadAudioSequence(soundNamesArray);
                 });
 
-                Promise.all(allSequencesLoaded).finally(() => {
-                    if (!isPlaying.current) {
-                        playNext();
-                    }
-                });
+                // 2. Chờ tất cả Promise hoàn tất (dù thành công hay thất bại)
+                Promise.all(loadingPromises)
+                    .then(allPreloadedSequences => {
+                        // 3. Duyệt qua mảng kết quả theo ĐÚNG THỨ TỰ GỐC 
+                        // và đẩy các đối tượng Audio đã được tải vào hàng đợi.
+                        allPreloadedSequences.forEach(preloadedAudioObjects => {
+                            // Chỉ thêm vào hàng đợi nếu chuỗi được tải thành công
+                            if (preloadedAudioObjects && preloadedAudioObjects.length > 0) {
+                                audioQueue.current.push(preloadedAudioObjects);
+                            }
+                        });
+                    })
+                    .finally(() => {
+                        // 4. Bắt đầu phát nếu chưa có âm thanh nào đang phát
+                        if (!isPlaying.current) {
+                            playNext();
+                        }
+                    });
 
             }, [playNext, preloadAudioSequence]);
 
@@ -370,7 +375,7 @@
                     allAudioSequences.push(audioSequence);
                 });
                 
-                // Gửi tất cả các chuỗi để được tải trước và phát liền mạch
+                // Gửi tất cả các chuỗi để được tải trước và phát liền mạch, đảm bảo đúng thứ tự
                 addMultipleSequencesToQueue(allAudioSequences);
             };
 
@@ -423,7 +428,6 @@
                         clearTimeout(delayTimer);
                     }
                 };
-            // Loại bỏ playLoserAudio khỏi dependency vì nó không được dùng ở đây nữa
             }, [history, maxRounds, gameState, players, addToQueue, playLowRoundAudio, unsortedPlayerScores]); 
             
             // Khởi tạo/Cập nhật input scores khi players thay đổi 
@@ -453,13 +457,33 @@
                 setRoundScoreInputs({});
                 setModal({ isOpen: false, type: null, data: null });
             };
+            
+            // --- 8. Reset Game (New Feature) ---
+            const handleResetGame = () => {
+                setModal({
+                    isOpen: true,
+                    type: 'confirm_reset',
+                    data: { message: 'Bạn có chắc chắn muốn HỦY bỏ trò chơi hiện tại và CẤU HÌNH ván mới không? Lịch sử sẽ bị xóa.' }
+                });
+            };
+            
+            const confirmResetGame = () => {
+                setGameState('setup');
+                setPlayers([]);
+                setHistory([]);
+                setIsScoringMode(false);
+                setRoundScoreInputs({});
+                setMaxRounds(15); 
+                localStorage.clear(); 
+                setModal({ isOpen: false, type: null, data: null });
+            };
 
 
             // --- Xử lý Stage: Setup (Giai đoạn I) ---
 
             const handlePlayerToggle = (player) => {
                 const newPlayers = players.find(p => p.id === player.id) 
-                    ? players.filter(p => p.id !== p.id)
+                    ? players.filter(p => p.id !== player.id) // Fix: use player.id not p.id
                     : [...players, player];
                 
                 if (newPlayers.length > MAX_PLAYERS) {
@@ -566,7 +590,6 @@
                 setHistory(prev => [...prev, newHistoryEntry]);
 
                 // Phát âm thanh theo logic mới (sắp xếp theo điểm ván vừa ghi)
-                // ĐIỂM VÁN MỚI ĐƯỢC ĐỌC TẠI ĐÂY
                 playScoreAudio(newRoundScores);
 
                 // Reset trạng thái
@@ -618,6 +641,8 @@
                         return <div><p className="text-gray-700">{modal.data.message}</p></div>;
                     case 'confirm_undo':
                         return <div><p className="text-gray-700">{modal.data.message}</p></div>;
+                    case 'confirm_reset': // NEW
+                        return <div><p className="text-gray-700 font-medium">{modal.data.message}</p></div>;
                     case 'reset_rounds':
                         return (
                             <div>
@@ -815,21 +840,28 @@
                     </div>
                     
                     
-                    {/* Các nút chức năng */}
-                    <div className="flex justify-between space-x-2 mb-4">
+                    {/* Các nút chức năng (4 nút) */}
+                    <div className="flex justify-between space-x-1 mb-4">
                          <button
                             onClick={handleUndo}
                             disabled={history.length === 0 || isScoringMode}
-                            className="flex-1 py-2 bg-warning text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-sm hover:bg-warning/80"
+                            className="flex-1 py-2 bg-warning text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-xs sm:text-sm hover:bg-warning/80"
                         >
                             ↩️ Hoàn Tác
                         </button>
                         <button
                             onClick={handleSetRoundsClick}
                             disabled={isScoringMode}
-                            className="flex-1 py-2 bg-blue-500 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-sm hover:bg-blue-500/80"
+                            className="flex-1 py-2 bg-blue-500 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-xs sm:text-sm hover:bg-blue-500/80"
                         >
                             🔁 Set Ván
+                        </button>
+                        <button
+                            onClick={handleResetGame} // NEW RESET BUTTON
+                            disabled={isScoringMode}
+                            className="flex-1 py-2 bg-danger text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-xs sm:text-sm hover:bg-danger/80"
+                        >
+                            🔄 Reset
                         </button>
                         <button
                             onClick={() => {
@@ -839,7 +871,7 @@
                                 addToQueue(['gameover']); 
                             }}
                             disabled={isScoringMode}
-                            className="flex-1 py-2 bg-gray-600 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-sm hover:bg-gray-600/80"
+                            className="flex-1 py-2 bg-gray-600 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-xs sm:text-sm hover:bg-gray-600/80"
                         >
                             🛑 Kết Thúc
                         </button>
@@ -971,16 +1003,7 @@
 
                     {/* Nút Chơi Lại */}
                     <button
-                        onClick={() => {
-                            setGameState('setup');
-                            setPlayers([]);
-                            setHistory([]);
-                            setIsScoringMode(false);
-                            setRoundScoreInputs({});
-                            setMaxRounds(15); 
-                            localStorage.clear(); 
-                            window.location.reload(); 
-                        }}
+                        onClick={confirmResetGame} // Use confirmResetGame logic here for a full reset
                         className="w-full py-3 bg-secondary text-white font-bold text-xl rounded-xl shadow-lg transition hover:bg-secondary/80"
                     >
                         CHƠI LẠI
@@ -1004,10 +1027,13 @@
 
                     {/* Modal Popup */}
                     <Modal
-                        title={modal.type === 'info' ? 'Thông báo' : modal.type === 'confirm_undo' ? 'Xác nhận Hoàn tác' : 'Set lại Số Ván Chơi'}
+                        title={modal.type === 'info' ? 'Thông báo' : 
+                               modal.type === 'confirm_undo' ? 'Xác nhận Hoàn tác' : 
+                               modal.type === 'confirm_reset' ? 'Xác nhận Reset Game' : 'Set lại Số Ván Chơi'}
                         isOpen={modal.isOpen}
                         onClose={() => setModal({ isOpen: false, type: null, data: null })}
                         onConfirm={modal.type === 'confirm_undo' ? confirmUndo : 
+                                   modal.type === 'confirm_reset' ? confirmResetGame : // NEW CONFIRMATION
                                    modal.type === 'reset_rounds' ? confirmResetRounds :
                                    () => setModal({ isOpen: false, type: null, data: null }) 
                                   }

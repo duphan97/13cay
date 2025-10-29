@@ -325,10 +325,13 @@
             return [state, setState];
         };
         
-        // --- Logic Ghi lịch sử lên GitHub (Yêu cầu 5) ---
-        const useGitHubHistory = (sortedScores, gameState) => {
+        // --- Logic Ghi lịch sử lên GitHub (Yêu cầu 5 & Bổ sung chống trùng lặp) ---
+        const useGitHubHistory = (sortedScores, gameState, history) => { 
             const historyRef = useRef([]); 
             const shaRef = useRef(null); 
+            
+            // TẠO MỘT KHÓA DUY NHẤT CHO TRẠNG THÁI GAME HIỆN TẠI (Dựa trên tổng số ván đã chơi)
+            const currentSessionKey = `game_saved_${history.length}`;
             
             const getAndSetSha = useCallback(async () => {
                 try {
@@ -368,6 +371,12 @@
             }, []);
 
             const saveHistoryToGithub = useCallback(async (currentSortedScores) => {
+                // KIỂM TRA SESSION STORAGE TRƯỚC KHI LƯU
+                if (sessionStorage.getItem(currentSessionKey) === 'true') {
+                    console.log("Lịch sử ván chơi này đã được lưu. Bỏ qua lưu GitHub.");
+                    return; // Ngăn chặn việc lưu trùng lặp
+                }
+                
                 if (!currentSortedScores || currentSortedScores.length === 0) {
                     console.log("Không có điểm để lưu. Bỏ qua lưu GitHub.");
                     return;
@@ -414,22 +423,26 @@
                     }
 
                     console.log("Lịch sử trò chơi đã được lưu thành công lên GitHub!");
+                    // ĐẶT CỜ BÁO HIỆU LƯU THÀNH CÔNG VÀO SESSION STORAGE
+                    sessionStorage.setItem(currentSessionKey, 'true');
+                    
                     // Cập nhật SHA mới
                     const result = await response.json();
                     shaRef.current = result.content.sha;
 
                 } catch (error) {
                     console.error("LỖI CẤP CAO khi lưu lịch sử lên GitHub:", error);
-                    // Có thể thêm logic thông báo cho người dùng ở đây
+                    // Không đặt cờ nếu lưu thất bại
                 }
-            }, [getAndSetSha]);
+            }, [getAndSetSha, currentSessionKey]);
             
             // Kích hoạt việc lưu khi chuyển sang Game Over
             useEffect(() => {
-                if (gameState === 'game_over') {
+                if (gameState === 'game_over' && history.length > 0) {
+                    // Chỉ lưu khi có ít nhất 1 ván đã chơi
                     saveHistoryToGithub(sortedScores);
                 }
-            }, [gameState, sortedScores, saveHistoryToGithub]); 
+            }, [gameState, sortedScores, saveHistoryToGithub, history.length]); 
         };
 
         // --- 2. Component Con: Modal (Thay thế alert/confirm) ---
@@ -501,8 +514,8 @@
                 return [...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore);
             }, [unsortedPlayerScores]);
 
-            // Kích hoạt Hook lưu lịch sử GitHub
-            useGitHubHistory(sortedScores, gameState); 
+            // Kích hoạt Hook lưu lịch sử GitHub (Đã thêm biến history)
+            useGitHubHistory(sortedScores, gameState, history); 
 
 
             // --- Logic Audio: Phát âm thanh đọc điểm VÁN MỚI ---
@@ -600,6 +613,8 @@
                 setRoundScoreInputs({});
                 setModal({ isOpen: false, type: null, data: null });
                 addToQueue(['hoantac']); // Yêu cầu 2: Thêm audio Hoàn tác
+                // Xóa cờ sessionStorage để cho phép lưu lại nếu game kết thúc lại
+                sessionStorage.removeItem(`game_saved_${history.length}`); 
             };
             
             const handleUndo = () => {
@@ -621,6 +636,12 @@
                 setMaxRounds(15); 
                 setSelectedPresetPlayer(''); // Reset selected preset player
                 localStorage.clear(); 
+                // Xóa tất cả các cờ game_saved trong sessionStorage
+                Object.keys(sessionStorage).forEach(key => {
+                    if (key.startsWith('game_saved_')) {
+                        sessionStorage.removeItem(key);
+                    }
+                });
                 setModal({ isOpen: false, type: null, data: null });
             };
             

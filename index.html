@@ -61,8 +61,8 @@
         const AUDIO_BASE_PATH = 'audio/';
         
         /* * DANH SÁCH FILE AUDIO CẦN CÓ TRONG THƯ MỤC 'audio/':
-        * 1. Hệ thống: vanmoi.mp3, chiabuon.mp3, va.mp3, dathua.mp3, gameover.mp3 (NEW)
-        * Cảnh báo ván cuối: 3left.mp3, 2left.mp3, 1left.mp3 (NEW)
+        * 1. Hệ thống: vanmoi.mp3, chiabuon.mp3, va.mp3, dathua.mp3, gameover.mp3
+        * Cảnh báo ván cuối: 3left.mp3, 2left.mp3, 1left.mp3
         * 2. Số điểm: -10.mp3, -9.mp3, ..., 0.mp3, ..., 10.mp3 
         * 3. Tên người chơi: binhdang.mp3, dunghoang.mp3, dungnguyen.mp3, v.v.
         */
@@ -341,7 +341,7 @@
             const [maxRounds, setMaxRounds] = useLocalStorageState('maxRounds', 15); 
             const [history, setHistory] = useLocalStorageState('history', []);
             const [showHistory, setShowHistory] = useState(false); // cho màn hình Playing
-            const [showGameOverHistory, setShowGameOverHistory] = useState(false); // NEW: cho màn hình Game Over
+            const [showGameOverHistory, setShowGameOverHistory] = useState(false); // cho màn hình Game Over
             const [isScoringMode, setIsScoringMode] = useState(false);
             const [newPlayerName, setNewPlayerName] = useState('');
             const [roundScoreInputs, setRoundScoreInputs] = useLocalStorageState('roundScoreInputs', {}); // Giữ lại giá trị khi refresh
@@ -350,26 +350,26 @@
             
             const { addToQueue, addMultipleSequencesToQueue } = useAudioQueue(); // Hook quản lý hàng đợi âm thanh
 
-            // Tính toán tổng điểm và bảng xếp hạng
-            const playerScores = useMemo(() => {
-                const roundsLimit = parseInt(maxRounds) || 15; // Dùng maxRounds đã parse cho an toàn
+            // Tính toán tổng điểm (Giữ nguyên thứ tự người chơi khi họ được thêm vào)
+            // Thỏa mãn yêu cầu: Sắp xếp tên người chơi trên bàn chơi và trong lịch sử phải cùng thứ tự
+            const unsortedPlayerScores = useMemo(() => {
                 return players.map(p => {
                     const totalScore = history.reduce((sum, round) => sum + (round.scores[p.id] || 0), 0);
                     return { ...p, totalScore };
-                }).sort((a, b) => b.totalScore - a.totalScore); // Sắp xếp từ cao xuống thấp
-            }, [players, history, maxRounds]);
+                }); 
+            }, [players, history]);
 
             // --- Logic Audio 4. Phát âm thanh đọc điểm ---
             const playScoreAudio = (currentRoundScores) => {
-                // Tạo mảng chi tiết điểm, có điểm ván vừa ghi
-                const scoreDetails = playerScores.map(p => ({
+                // Sử dụng players state (cũng là thứ tự unsorted) để tạo danh sách đọc
+                const scoreDetails = players.map(p => ({
                     name: p.name,
                     score: currentRoundScores[p.id] || 0,
                     id: p.id
                 }));
                 
-                // Sắp xếp theo điểm ván vừa ghi (cao -> thấp)
-                scoreDetails.sort((a, b) => b.score - a.score);
+                // Sắp xếp theo điểm ván vừa ghi (cao -> thấp) DÙNG SỐ HỌC cho mục đích đọc điểm.
+                scoreDetails.sort((a, b) => Number(b.score) - Number(a.score));
 
                 let allAudioSequences = [];
                 
@@ -389,7 +389,7 @@
                 addMultipleSequencesToQueue(allAudioSequences);
             };
 
-            // Logic Audio 6a. Phát thông báo ván còn lại (NEW)
+            // Logic Audio 6a. Phát thông báo ván còn lại
             const playLowRoundAudio = useCallback((roundsLeft) => {
                 let audioFile = null;
                 if (roundsLeft === 3) {
@@ -405,7 +405,7 @@
             }, [addToQueue]);
 
             // Logic Audio 6b. Thông báo người thua (Được gọi sau gameover.mp3)
-            const playLoserAudio = useCallback((sortedPlayers) => { // Renamed from playGameOverAudio
+            const playLoserAudio = useCallback((sortedPlayers) => { 
                 if (sortedPlayers.length < 2) return;
                 
                 // Người ít điểm nhất là người cuối cùng trong mảng đã sắp xếp (thấp điểm)
@@ -424,11 +424,10 @@
                     'dathua'
                 ];
                 
-                // Sử dụng addToQueue cho lệnh đơn (dù nó là một chuỗi)
                 addToQueue(audioSequence);
             }, [addToQueue]);
 
-            // --- 5. Lịch sử điểm và Tổng kết ván (ĐÃ CẬP NHẬT LOGIC AUDIO) ---
+            // --- 5. Lịch sử điểm và Tổng kết ván (useEffect chính) ---
             useEffect(() => {
                 const roundsLimit = parseInt(maxRounds);
                 const currentRound = history.length;
@@ -436,34 +435,50 @@
                 if (gameState !== 'playing' || roundsLimit <= 0) return;
 
                 const roundsLeft = roundsLimit - currentRound;
-                
+                let delayTimer = null;
+
                 // 1. Logic Game Over (Phát gameover.mp3 và thông báo người thua)
                 if (currentRound >= roundsLimit) {
                     setGameState('game_over');
                     
-                    // Tính toán final scores
-                    const finalPlayerScores = players.map(p => {
-                        const totalScore = history.reduce((sum, round) => sum + (round.scores[p.id] || 0), 0);
-                        return { ...p, totalScore };
-                    }).sort((a, b) => b.totalScore - a.totalScore);
+                    // Tính toán final scores đã được sắp xếp cho Audio
+                    const sortedFinalScores = [...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore);
                     
-                    // Phát âm thanh: gameover.mp3 trước, sau đó đến người thua
-                    addToQueue(['gameover']); // NEW: Phát âm thanh kết thúc trò chơi
-                    playLoserAudio(finalPlayerScores); // Gọi hàm thông báo người thua
-                    return; // Game is over
+                    // Phát âm thanh: gameover.mp3 trước
+                    addToQueue(['gameover']); 
+                    
+                    // FIX: Thêm độ trễ 5s trước khi thông báo người thua
+                    delayTimer = setTimeout(() => {
+                         playLoserAudio(sortedFinalScores); 
+                    }, 5000); // 5 giây
+                    
+                    return () => {
+                         if (delayTimer) clearTimeout(delayTimer);
+                    }; // Game is over
                 }
 
                 // 2. Logic Low Rounds Notification (Phát 3left, 2left, 1left)
-                // Chỉ kích hoạt khi vừa kết thúc một ván (currentRound > 0)
+                // Kích hoạt khi vừa kết thúc một ván (currentRound > 0) VÀ chưa kết thúc game
                 if (currentRound > 0) { 
-                   playLowRoundAudio(roundsLeft);
+                    // FIX: Thêm độ trễ 5 giây
+                    delayTimer = setTimeout(() => {
+                        playLowRoundAudio(roundsLeft);
+                    }, 5000); 
                 }
+                
+                // Cleanup function: Clear the timer if the component unmounts or deps change
+                return () => {
+                    if (delayTimer) {
+                        clearTimeout(delayTimer);
+                    }
+                };
 
-            }, [history, maxRounds, gameState, players, addToQueue, playLowRoundAudio, playLoserAudio]); // Cập nhật dependencies
+            }, [history, maxRounds, gameState, players, addToQueue, playLowRoundAudio, playLoserAudio, unsortedPlayerScores]); 
             
             // Khởi tạo/Cập nhật input scores khi players thay đổi (sau khi load state từ localStorage)
             useEffect(() => {
                  if (players.length > 0 && gameState === 'playing' && Object.keys(roundScoreInputs).length === 0) {
+                    // Khởi tạo dựa trên danh sách players (unsorted)
                     const initialInputs = players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
                     setRoundScoreInputs(initialInputs);
                 }
@@ -493,6 +508,7 @@
             // --- Xử lý Stage: Setup (Giai đoạn I) ---
 
             const handlePlayerToggle = (player) => {
+                // Logic để giữ thứ tự của players khi toggle
                 const newPlayers = players.find(p => p.id === player.id) 
                     ? players.filter(p => p.id !== player.id)
                     : [...players, player];
@@ -505,6 +521,7 @@
                     });
                     return;
                 }
+                // setPlayers sẽ giữ thứ tự thêm vào
                 setPlayers(newPlayers);
             };
 
@@ -572,7 +589,7 @@
                     addToQueue(['vanmoi']); // CHỈ PHÁT LẦN 1
                     setIsScoringMode(true);
                     // Reset input scores to 0 when entering scoring mode
-                    const initialInputs = playerScores.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
+                    const initialInputs = unsortedPlayerScores.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
                     setRoundScoreInputs(initialInputs);
                 } else {
                     // Xác nhận ghi điểm
@@ -590,7 +607,7 @@
                 const newRoundScores = {};
 
                 // Chuẩn hóa điểm
-                playerScores.forEach(p => {
+                unsortedPlayerScores.forEach(p => {
                     const score = roundScoreInputs[p.id];
                     // Nếu giá trị là '' (string rỗng) hoặc null, NaN thì gán 0
                     if (score === '' || score === null || isNaN(score)) {
@@ -651,13 +668,14 @@
                 if (history.length >= newMax) {
                     setGameState('game_over');
                     
-                    const finalPlayerScores = players.map(p => {
-                        const totalScore = history.reduce((sum, round) => sum + (round.scores[p.id] || 0), 0);
-                        return { ...p, totalScore };
-                    }).sort((a, b) => b.totalScore - a.totalScore);
-                    
+                    // Tính toán final scores đã được sắp xếp cho Audio
+                    const sortedFinalScores = [...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore);
+
                     addToQueue(['gameover']);
-                    playLoserAudio(finalPlayerScores);
+                    // Thêm độ trễ 5s trước khi thông báo người thua
+                    setTimeout(() => {
+                         playLoserAudio(sortedFinalScores); 
+                    }, 5000); 
                 }
             };
 
@@ -691,7 +709,7 @@
 
             // --- Render các Stage ---
             
-            // Stage 0: Setup (Đã tối ưu giao diện)
+            // Stage 0: Setup
             const renderSetup = () => (
                 <div className="p-4 sm:p-6 pb-2">
                     <h2 className="text-xl font-bold text-primary mb-4 text-center">⚙️ Cấu Hình Trò Chơi</h2>
@@ -803,63 +821,67 @@
                 </div>
             );
 
-            // Stage 1: Playing (Đã tối ưu giao diện)
+            // Stage 1: Playing
             const renderPlaying = () => (
                 <div className="p-4 sm:p-6">
                     <h2 className="text-xl sm:text-2xl font-bold text-primary mb-4 text-center">
                         VÁN {history.length + 1} / {parseInt(maxRounds) || 15}
                     </h2>
                     
-                    {/* Vùng Ghi Điểm (Đảo vị trí) */}
-                    <div className="mb-4 flex flex-col space-y-4">
-                        
-                        {isScoringMode && (
-                            // Hiện vùng nhập điểm ở trên nút xác nhận
-                            <div className="p-4 bg-indigo-50 rounded-xl shadow border border-indigo-200 animate-fade-in order-1">
-                                <h4 className="font-semibold text-primary mb-3">Nhập điểm ván {history.length + 1}:</h4>
-                                {playerScores.map(p => (
-                                    <div key={p.id} className="flex items-center justify-between space-x-2 mb-3">
-                                        {/* Tên người chơi: Chiếm 50% */}
-                                        <span className="w-1/2 text-gray-700 truncate font-medium text-lg">{p.name}:</span>
-                                        {/* Cụm Tăng/Giảm: Chiếm 50%, sát bên phải */}
+                    {/* Nút Ghi/Xác nhận điểm */}
+                     <button
+                        onClick={handleNewScoreClick}
+                        className={`w-full py-3 font-bold text-white rounded-xl shadow-lg transition duration-300 transform mb-4 ${isScoringMode ? 'bg-warning animate-pulse-slow' : 'bg-primary'}`}
+                        disabled={unsortedPlayerScores.length === 0}
+                    >
+                        {isScoringMode ? 'XÁC NHẬN GHI ĐIỂM VÁN NÀY' : 'GHI ĐIỂM VÁN MỚI'}
+                    </button>
+                    
+                    {/* Vùng Hiện Thị Tên Người Chơi và Ghi Điểm */}
+                    <div className={`p-4 rounded-xl shadow-lg mb-4 border transition duration-300 ${isScoringMode ? 'bg-indigo-50 border-indigo-200 animate-fade-in' : 'bg-white border-gray-200'}`}>
+                        <h3 className="text-xl font-bold text-gray-700 mb-3 border-b pb-2">
+                            {isScoringMode ? 'Nhập Điểm Ván Mới' : 'Người Chơi'}
+                        </h3>
+                        <div className="space-y-3">
+                            {/* Dùng danh sách không sắp xếp để đảm bảo thứ tự thống nhất */}
+                            {unsortedPlayerScores.map(p => ( 
+                                <div key={p.id} className="flex justify-between items-center py-1">
+                                    {/* Tên người chơi: Tự động lấp đầy nếu không có ô nhập điểm, chiếm 1/2 nếu đang nhập điểm */}
+                                    <span className={`text-lg font-medium text-gray-800 ${isScoringMode ? 'w-1/2' : 'flex-grow'} truncate`}>
+                                        {p.name}
+                                    </span>
+                                    
+                                    {/* Scoring Input/Controls: Chỉ hiển thị nếu isScoringMode là true */}
+                                    {isScoringMode && (
                                         <div className="grid grid-cols-3 w-1/2 gap-1">
                                             {/* Nút Giảm */}
                                             <button 
                                                 onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) - 1)}
-                                                className="p-2 bg-danger text-white rounded-lg font-bold text-base"
+                                                className="p-2 bg-danger text-white rounded-lg font-bold text-base transition hover:bg-danger/80"
                                             >
                                                 -
                                             </button>
-                                            {/* Input Điểm: Gọn lại */}
+                                            {/* Input Điểm */}
                                             <input
                                                 type="number"
                                                 // Hiển thị '0' nếu giá trị là số 0, nếu là string rỗng (từ input) thì để rỗng
                                                 value={roundScoreInputs[p.id] === 0 && roundScoreInputs[p.id] !== '' ? '0' : roundScoreInputs[p.id]}
                                                 onChange={(e) => handleScoreChange(p.id, e.target.value)}
-                                                // Đã điều chỉnh padding (p-1) và font-size (text-xl) cho gọn
-                                                className="p-1 border border-gray-300 rounded-lg text-center font-mono text-xl"
+                                                className="p-1 border border-gray-300 rounded-lg text-center font-mono text-xl focus:ring-secondary focus:border-secondary"
                                                 placeholder="0"
                                             />
-                                            {/* Nút Tăng (Đã sửa layout) */}
+                                            {/* Nút Tăng */}
                                             <button 
                                                 onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) + 1)}
-                                                className="p-2 bg-secondary text-white rounded-lg font-bold text-base"
+                                                className="p-2 bg-secondary text-white rounded-lg font-bold text-base transition hover:bg-secondary/80"
                                             >
                                                 +
                                             </button>
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        
-                        {/* Nút Ghi/Xác nhận điểm (Đã đổi thứ tự) */}
-                         <button
-                            onClick={handleNewScoreClick}
-                            className={`w-full py-3 font-bold text-white rounded-xl shadow-lg transition duration-300 transform ${isScoringMode ? 'bg-warning animate-pulse-slow' : 'bg-primary'}`}
-                        >
-                            {isScoringMode ? 'XÁC NHẬN GHI ĐIỂM VÁN NÀY' : 'GHI ĐIỂM VÁN MỚI'}
-                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     </div>
                     
                     
@@ -868,21 +890,34 @@
                          <button
                             onClick={handleUndo}
                             disabled={history.length === 0 || isScoringMode}
-                            className="flex-1 py-2 bg-warning text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-sm"
+                            className="flex-1 py-2 bg-warning text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-sm hover:bg-warning/80"
                         >
                             ↩️ Hoàn Tác
                         </button>
                         <button
                             onClick={handleSetRoundsClick}
                             disabled={isScoringMode}
-                            className="flex-1 py-2 bg-blue-500 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-sm"
+                            className="flex-1 py-2 bg-blue-500 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-sm hover:bg-blue-500/80"
                         >
                             🔁 Set Ván
                         </button>
                         <button
-                            onClick={() => setGameState('game_over')}
+                            onClick={() => {
+                                // Tính toán final scores đã được sắp xếp cho âm thanh kết thúc
+                                const sortedFinalScores = [...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore);
+                                
+                                // Phát âm thanh: gameover.mp3 trước
+                                addToQueue(['gameover']); 
+                                
+                                // Thêm độ trễ 5s trước khi thông báo người thua
+                                setTimeout(() => {
+                                    playLoserAudio(sortedFinalScores);
+                                }, 5000); 
+
+                                setGameState('game_over');
+                            }}
                             disabled={isScoringMode}
-                            className="flex-1 py-2 bg-gray-600 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-sm"
+                            className="flex-1 py-2 bg-gray-600 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-sm hover:bg-gray-600/80"
                         >
                             🛑 Kết Thúc
                         </button>
@@ -893,9 +928,9 @@
                     <div className="bg-white p-4 rounded-xl shadow-lg">
                         <button 
                             onClick={() => setShowHistory(prev => !prev)}
-                            className="w-full text-left text-lg font-semibold text-gray-700 mb-2 p-2 rounded-lg transition flex justify-between items-center"
+                            className="w-full text-left text-lg font-semibold text-gray-700 mb-2 p-2 rounded-lg transition flex justify-between items-center hover:bg-gray-100"
                         >
-                            Lịch Sử Điểm ({history.length} Ván) {showHistory ? '▲' : '▼'}
+                            Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showHistory ? '▲' : '▼'}
                         </button>
                         {showHistory && (
                             <div className="overflow-x-auto mt-2 max-h-64">
@@ -911,6 +946,7 @@
                                         </tr>
                                     </thead>
                                     <tbody className="bg-white divide-y divide-gray-200">
+                                        {/* Dùng players state (unsorted) để đảm bảo thứ tự thống nhất với giao diện chơi */}
                                         {players.map(p => (
                                             <tr key={p.id}>
                                                 {/* Dữ liệu Tên Người Chơi (Fixed/Sticky) */}
@@ -940,16 +976,17 @@
                 </div>
             );
 
-            // Stage 2: Game Over (ĐÃ CẬP NHẬT LỊCH SỬ ĐIỂM)
+            // Stage 2: Game Over (Hiển thị Bảng Xếp Hạng cuối cùng)
             const renderGameOver = () => (
                 <div className="p-6 text-center animate-bounce-in">
                     <h2 className="text-4xl font-extrabold text-danger mb-6">🎉 TRÒ CHƠI KẾT THÚC! 🎉</h2>
                     <p className="text-xl font-medium text-gray-700 mb-8">Tổng số ván đã chơi: <span className="text-primary font-bold">{history.length}</span></p>
 
-                    {/* Bảng Xếp Hạng */}
+                    {/* Bảng Xếp Hạng (SẮP XẾP THEO TỔNG ĐIỂM) */}
                     <div className="bg-white p-6 rounded-xl shadow-2xl mb-8">
                         <h3 className="text-2xl font-bold text-primary mb-4 border-b pb-2">🏆 BẢNG XẾP HẠNG</h3>
-                        {playerScores.map((p, index) => (
+                        {/* Tạo bảng xếp hạng bằng cách sắp xếp unsortedPlayerScores */}
+                        {[...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore).map((p, index) => (
                             <div 
                                 key={p.id} 
                                 className={`flex justify-between items-center py-3 px-4 my-2 rounded-lg transition transform duration-300 ${index === 0 ? 'bg-yellow-100 border-2 border-warning scale-105 shadow-lg' : 'bg-gray-50'}`}
@@ -964,11 +1001,11 @@
                         ))}
                     </div>
 
-                    {/* Lịch sử điểm tại màn hình Game Over (NEW) */}
+                    {/* Lịch sử điểm tại màn hình Game Over */}
                     <div className="bg-white p-4 rounded-xl shadow-lg mb-8">
                         <button 
                             onClick={() => setShowGameOverHistory(prev => !prev)}
-                            className="w-full text-left text-lg font-semibold text-gray-700 mb-2 p-2 rounded-lg transition flex justify-between items-center"
+                            className="w-full text-left text-lg font-semibold text-gray-700 mb-2 p-2 rounded-lg transition flex justify-between items-center hover:bg-gray-100"
                         >
                             Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showGameOverHistory ? '▲' : '▼'}
                         </button>
@@ -984,6 +1021,7 @@
                                         </tr>
                                     </thead>
                                     <tbody className="bg-white divide-y divide-gray-200">
+                                        {/* Dùng players state (unsorted) để đảm bảo thứ tự thống nhất */}
                                         {players.map(p => (
                                             <tr key={p.id}>
                                                 <td 
@@ -1022,7 +1060,7 @@
                             // Note: We use window.location.reload() to fully reset the component state and localStorage
                             window.location.reload(); 
                         }}
-                        className="w-full py-3 bg-secondary text-white font-bold text-xl rounded-xl shadow-lg transition"
+                        className="w-full py-3 bg-secondary text-white font-bold text-xl rounded-xl shadow-lg transition hover:bg-secondary/80"
                     >
                         CHƠI LẠI
                     </button>

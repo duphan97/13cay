@@ -178,14 +178,14 @@
                             {showCancel && (
                                 <button
                                     onClick={onClose}
-                                    className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition"
+                                    className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-200 rounded-lg transition"
                                 >
                                     {cancelText}
                                 </button>
                             )}
                             <button
                                 onClick={onConfirm}
-                                className="px-4 py-2 text-sm font-semibold text-white bg-secondary rounded-lg hover:bg-green-600 transition"
+                                className="px-4 py-2 text-sm font-semibold text-white bg-secondary rounded-lg transition"
                             >
                                 {confirmText}
                             </button>
@@ -511,7 +511,7 @@
                                 <button
                                     key={r}
                                     onClick={() => setMaxRounds(r)}
-                                    className={`px-3 py-1 text-sm font-medium rounded-full transition ${maxRounds === r ? 'bg-primary text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                                    className={`px-3 py-1 text-sm font-medium rounded-full transition ${maxRounds === r ? 'bg-primary text-white shadow-md' : 'bg-gray-200 text-gray-700'}`}
                                 >
                                     {r} Ván
                                 </button>
@@ -545,7 +545,7 @@
                                     <button
                                         key={name}
                                         onClick={() => handlePlayerToggle(player)}
-                                        className={`px-3 py-1 text-sm rounded-full transition ${isSelected ? 'bg-secondary text-white font-semibold shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'} disabled:opacity-50`}
+                                        className={`px-3 py-1 text-sm rounded-full transition ${isSelected ? 'bg-secondary text-white font-semibold shadow-sm' : 'bg-gray-100 text-gray-600'} disabled:opacity-50`}
                                         disabled={!isSelected && players.length >= MAX_PLAYERS}
                                     >
                                         {name} {isSelected ? '✅' : ''}
@@ -566,7 +566,7 @@
                             />
                             <button
                                 onClick={handleAddNewPlayer}
-                                className="p-2 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-indigo-700 transition disabled:bg-gray-400"
+                                className="p-2 bg-primary text-white rounded-lg font-semibold text-sm transition disabled:bg-gray-400"
                                 disabled={!newPlayerName.trim() || players.length >= MAX_PLAYERS}
                             >
                                 Thêm
@@ -584,7 +584,7 @@
                                     {p.name}
                                     <button 
                                         onClick={() => handlePlayerToggle(p)}
-                                        className="ml-2 text-white/80 hover:text-white font-bold text-xs"
+                                        className="ml-2 text-white/80 font-bold text-xs"
                                     >
                                         &times;
                                     </button>
@@ -598,7 +598,7 @@
                     <button
                         onClick={handleStartGame}
                         disabled={players.length < 2}
-                        className="w-full py-3 bg-secondary text-white font-bold text-lg rounded-xl shadow-lg hover:bg-green-600 transition disabled:bg-gray-400"
+                        className="w-full py-3 bg-secondary text-white font-bold text-lg rounded-xl shadow-lg transition disabled:bg-gray-400"
                     >
                         {players.length < 2 ? 'Cần 2 người chơi để bắt đầu' : `BẮT ĐẦU TRÒ CHƠI (${maxRounds} VÁN)`}
                     </button>
@@ -620,14 +620,15 @@
                             <div className="p-4 bg-indigo-50 rounded-xl shadow border border-indigo-200 animate-fade-in order-1">
                                 <h4 className="font-semibold text-primary mb-3">Nhập điểm ván {history.length + 1}:</h4>
                                 {playerScores.map(p => (
-                                    <div key={p.id} className="flex items-center space-x-2 mb-3">
-                                        <span className="w-1/3 text-gray-700 truncate font-medium">{p.name}:</span>
-                                        {/* Đã Tối Ưu Layout cho điện thoại bằng Grid 3 cột (ngang) */}
-                                        <div className="grid grid-cols-3 w-2/3 gap-1">
+                                    <div key={p.id} className="flex items-center justify-between space-x-2 mb-3">
+                                        {/* Tên người chơi: Chiếm 50% */}
+                                        <span className="w-1/2 text-gray-700 truncate font-medium text-lg">{p.name}:</span>
+                                        {/* Cụm Tăng/Giảm: Chiếm 50%, sát bên phải */}
+                                        <div className="grid grid-cols-3 w-1/2 gap-1">
                                             {/* Nút Giảm */}
                                             <button 
                                                 onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) - 1)}
-                                                className="p-2 bg-danger text-white rounded-lg hover:bg-red-600 font-bold text-base"
+                                                className="p-2 bg-danger text-white rounded-lg font-bold text-base"
                                             >
                                                 -
                                             </button>
@@ -644,7 +645,7 @@
                                             {/* Nút Tăng (Đã sửa layout) */}
                                             <button 
                                                 onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) + 1)}
-                                                className="p-2 bg-secondary text-white rounded-lg hover:bg-green-600 font-bold text-base"
+                                                className="p-2 bg-secondary text-white rounded-lg font-bold text-base"
                                             >
                                                 +
                                             </button>
@@ -657,7 +658,7 @@
                         {/* Nút Ghi/Xác nhận điểm (Đã đổi thứ tự) */}
                          <button
                             onClick={handleNewScoreClick}
-                            className={`w-full py-3 font-bold text-white rounded-xl shadow-lg transition duration-300 transform hover:scale-[1.01] order-2 ${isScoringMode ? 'bg-warning hover:bg-amber-600 animate-pulse-slow' : 'bg-primary hover:bg-indigo-700'}`}
+                            className={`w-full py-3 font-bold text-white rounded-xl shadow-lg transition duration-300 transform ${isScoringMode ? 'bg-warning animate-pulse-slow' : 'bg-primary'}`}
                         >
                             {isScoringMode ? 'XÁC NHẬN GHI ĐIỂM VÁN NÀY' : 'GHI ĐIỂM VÁN MỚI'}
                         </button>
@@ -671,21 +672,21 @@
                          <button
                             onClick={handleUndo}
                             disabled={history.length === 0 || isScoringMode}
-                            className="flex-1 py-2 bg-warning text-white font-semibold rounded-lg hover:bg-amber-600 transition disabled:bg-gray-400 text-sm"
+                            className="flex-1 py-2 bg-warning text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-sm"
                         >
                             ↩️ Hoàn Tác
                         </button>
                         <button
                             onClick={handleSetRoundsClick}
                             disabled={isScoringMode}
-                            className="flex-1 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition disabled:bg-gray-400 text-sm"
+                            className="flex-1 py-2 bg-blue-500 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-sm"
                         >
                             🔁 Set Ván
                         </button>
                         <button
                             onClick={() => setGameState('game_over')}
                             disabled={isScoringMode}
-                            className="flex-1 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition disabled:bg-gray-400 text-sm"
+                            className="flex-1 py-2 bg-gray-600 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-sm"
                         >
                             🛑 Kết Thúc
                         </button>
@@ -696,7 +697,7 @@
                     <div className="bg-white p-4 rounded-xl shadow-lg">
                         <button 
                             onClick={() => setShowHistory(prev => !prev)}
-                            className="w-full text-left text-lg font-semibold text-gray-700 mb-2 p-2 hover:bg-gray-100 rounded-lg transition flex justify-between items-center"
+                            className="w-full text-left text-lg font-semibold text-gray-700 mb-2 p-2 rounded-lg transition flex justify-between items-center"
                         >
                             Lịch Sử Điểm ({history.length} Ván) {showHistory ? '▲' : '▼'}
                         </button>
@@ -780,7 +781,7 @@
                             // Note: We use window.location.reload() to fully reset the component state and localStorage
                             window.location.reload(); 
                         }}
-                        className="w-full py-3 bg-secondary text-white font-bold text-xl rounded-xl shadow-lg hover:bg-green-600 transition"
+                        className="w-full py-3 bg-secondary text-white font-bold text-xl rounded-xl shadow-lg transition"
                     >
                         CHƠI LẠI
                     </button>

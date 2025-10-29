@@ -440,16 +440,6 @@
 
 
             // --- 7. Hoàn tác (Undo) ---
-            const handleUndo = () => {
-                if (history.length === 0) return;
-
-                setModal({
-                    isOpen: true,
-                    type: 'confirm_undo',
-                    data: { message: `Bạn có chắc chắn muốn hoàn tác Ván ${history.length} không?` }
-                });
-            };
-
             const confirmUndo = () => {
                 setHistory(prev => prev.slice(0, -1)); // Xóa ván cuối cùng
                 setGameState('playing');
@@ -458,15 +448,17 @@
                 setModal({ isOpen: false, type: null, data: null });
             };
             
-            // --- 8. Reset Game (New Feature) ---
-            const handleResetGame = () => {
+            const handleUndo = () => {
+                if (history.length === 0) return;
+
                 setModal({
                     isOpen: true,
-                    type: 'confirm_reset',
-                    data: { message: 'Bạn có chắc chắn muốn HỦY bỏ trò chơi hiện tại và CẤU HÌNH ván mới không? Lịch sử sẽ bị xóa.' }
+                    type: 'confirm_action',
+                    data: { action: 'Hoàn Tác', onConfirm: confirmUndo }
                 });
             };
-            
+
+            // --- 8. Reset Game ---
             const confirmResetGame = () => {
                 setGameState('setup');
                 setPlayers([]);
@@ -477,13 +469,37 @@
                 localStorage.clear(); 
                 setModal({ isOpen: false, type: null, data: null });
             };
+            
+            const handleResetGame = () => {
+                setModal({
+                    isOpen: true,
+                    type: 'confirm_action',
+                    data: { action: 'Reset Game', onConfirm: confirmResetGame }
+                });
+            };
+            
+            // --- 9. Kết Thúc Game
+             const handleEndGameConfirm = () => {
+                setModal({
+                    isOpen: true,
+                    type: 'confirm_action',
+                    data: { 
+                        action: 'Kết Thúc Game', 
+                        onConfirm: () => {
+                            setGameState('game_over');
+                            addToQueue(['gameover']); 
+                            setModal({ isOpen: false, type: null, data: null });
+                        }
+                    }
+                });
+            };
 
 
             // --- Xử lý Stage: Setup (Giai đoạn I) ---
 
             const handlePlayerToggle = (player) => {
                 const newPlayers = players.find(p => p.id === player.id) 
-                    ? players.filter(p => p.id !== player.id) // Fix: use player.id not p.id
+                    ? players.filter(p => p.id !== player.id) 
                     : [...players, player];
                 
                 if (newPlayers.length > MAX_PLAYERS) {
@@ -597,6 +613,7 @@
                 setRoundScoreInputs({});
             };
             
+            // Xử lý Set Rounds - Giữ nguyên flow cũ (input modal)
             const handleSetRoundsClick = () => {
                  setModal({
                     isOpen: true,
@@ -639,10 +656,8 @@
                 switch (modal.type) {
                     case 'info':
                         return <div><p className="text-gray-700">{modal.data.message}</p></div>;
-                    case 'confirm_undo':
-                        return <div><p className="text-gray-700">{modal.data.message}</p></div>;
-                    case 'confirm_reset': // NEW
-                        return <div><p className="text-gray-700 font-medium">{modal.data.message}</p></div>;
+                    case 'confirm_action': // New simple confirmation
+                        return <div><p className="text-gray-700 font-medium">Xác nhận **{modal.data.action}**?</p></div>;
                     case 'reset_rounds':
                         return (
                             <div>
@@ -667,7 +682,7 @@
 
             // --- Render các Stage ---
             
-            // Stage 0: Setup
+            // Stage 0: Setup (Không thay đổi)
             const renderSetup = () => (
                 <div className="p-4 sm:p-6 pb-2">
                     <h2 className="text-xl font-bold text-primary mb-4 text-center">⚙️ Cấu Hình Trò Chơi</h2>
@@ -777,28 +792,28 @@
                 </div>
             );
 
-            // Stage 1: Playing
+            // Stage 1: Playing (ĐÃ TỐI ƯU GIAO DIỆN)
             const renderPlaying = () => (
-                <div className="p-4 sm:p-6">
-                    <h2 className="text-xl sm:text-2xl font-bold text-primary mb-4 text-center">
+                <div className="p-3 sm:p-4"> 
+                    <h2 className="text-xl sm:text-2xl font-bold text-primary mb-2 text-center"> 
                         VÁN {history.length + 1} / {parseInt(maxRounds) || 15}
                     </h2>
                     
                     {/* Nút Ghi/Xác nhận điểm */}
                      <button
                         onClick={handleNewScoreClick}
-                        className={`w-full py-3 font-bold text-white rounded-xl shadow-lg transition duration-300 transform mb-4 ${isScoringMode ? 'bg-warning animate-pulse-slow' : 'bg-primary'}`}
+                        className={`w-full py-2 font-bold text-white rounded-xl shadow-lg transition duration-300 transform mb-3 ${isScoringMode ? 'bg-warning animate-pulse-slow' : 'bg-primary'}`} 
                         disabled={unsortedPlayerScores.length === 0}
                     >
                         {isScoringMode ? 'XÁC NHẬN GHI ĐIỂM VÁN NÀY' : 'GHI ĐIỂM VÁN MỚI'}
                     </button>
                     
                     {/* Vùng Hiện Thị Tên Người Chơi và Ghi Điểm */}
-                    <div className={`p-4 rounded-xl shadow-lg mb-4 border transition duration-300 ${isScoringMode ? 'bg-indigo-50 border-indigo-200 animate-fade-in' : 'bg-white border-gray-200'}`}>
-                        <h3 className="text-xl font-bold text-gray-700 mb-3 border-b pb-2">
+                    <div className={`p-3 rounded-xl shadow-lg mb-3 border transition duration-300 ${isScoringMode ? 'bg-indigo-50 border-indigo-200 animate-fade-in' : 'bg-white border-gray-200'}`}> 
+                        <h3 className="text-xl font-bold text-gray-700 mb-2 border-b pb-1"> 
                             {isScoringMode ? 'Nhập Điểm Ván Mới' : 'Người Chơi'}
                         </h3>
-                        <div className="space-y-3">
+                        <div className="space-y-2"> 
                             {/* Dùng danh sách không sắp xếp để đảm bảo thứ tự thống nhất */}
                             {players.map(p => ( 
                                 <div key={p.id} className="flex justify-between items-center py-1">
@@ -813,7 +828,7 @@
                                             {/* Nút Giảm */}
                                             <button 
                                                 onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) - 1)}
-                                                className="p-2 bg-danger text-white rounded-lg font-bold text-base transition hover:bg-danger/80"
+                                                className="p-1.5 bg-danger text-white rounded-lg font-bold text-base transition hover:bg-danger/80" 
                                             >
                                                 -
                                             </button>
@@ -828,7 +843,7 @@
                                             {/* Nút Tăng */}
                                             <button 
                                                 onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) + 1)}
-                                                className="p-2 bg-secondary text-white rounded-lg font-bold text-base transition hover:bg-secondary/80"
+                                                className="p-1.5 bg-secondary text-white rounded-lg font-bold text-base transition hover:bg-secondary/80" 
                                             >
                                                 +
                                             </button>
@@ -841,35 +856,30 @@
                     
                     
                     {/* Các nút chức năng (4 nút) */}
-                    <div className="flex justify-between space-x-1 mb-4">
+                    <div className="flex justify-between space-x-1 mb-2"> 
                          <button
-                            onClick={handleUndo}
+                            onClick={handleUndo} // Sử dụng handler mới với xác nhận
                             disabled={history.length === 0 || isScoringMode}
                             className="flex-1 py-2 bg-warning text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-xs sm:text-sm hover:bg-warning/80"
                         >
                             ↩️ Hoàn Tác
                         </button>
                         <button
-                            onClick={handleSetRoundsClick}
+                            onClick={handleSetRoundsClick} // Giữ nguyên handler cũ (mở modal input)
                             disabled={isScoringMode}
                             className="flex-1 py-2 bg-blue-500 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-xs sm:text-sm hover:bg-blue-500/80"
                         >
                             🔁 Set Ván
                         </button>
                         <button
-                            onClick={handleResetGame} // NEW RESET BUTTON
+                            onClick={handleResetGame} // Sử dụng handler mới với xác nhận
                             disabled={isScoringMode}
                             className="flex-1 py-2 bg-danger text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-xs sm:text-sm hover:bg-danger/80"
                         >
                             🔄 Reset
                         </button>
                         <button
-                            onClick={() => {
-                                setGameState('game_over');
-                                
-                                // Yêu cầu 1 (Kết thúc bằng nút): CHỈ phát gameover.mp3
-                                addToQueue(['gameover']); 
-                            }}
+                            onClick={handleEndGameConfirm} // Sử dụng handler mới với xác nhận
                             disabled={isScoringMode}
                             className="flex-1 py-2 bg-gray-600 text-white font-semibold rounded-lg transition disabled:bg-gray-400 text-xs sm:text-sm hover:bg-gray-600/80"
                         >
@@ -878,16 +888,16 @@
                     </div>
                     
                     
-                    {/* Lịch sử điểm (Đã tối ưu cuộn ngang) */}
-                    <div className="bg-white p-4 rounded-xl shadow-lg">
+                    {/* Lịch sử điểm */}
+                    <div className="bg-white p-3 rounded-xl shadow-lg"> 
                         <button 
                             onClick={() => setShowHistory(prev => !prev)}
-                            className="w-full text-left text-lg font-semibold text-gray-700 mb-2 p-2 rounded-lg transition flex justify-between items-center hover:bg-gray-100"
+                            className="w-full text-left text-lg font-semibold text-gray-700 mb-2 p-1 rounded-lg transition flex justify-between items-center hover:bg-gray-100"
                         >
                             Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showHistory ? '▲' : '▼'}
                         </button>
                         {showHistory && (
-                            <div className="overflow-x-auto mt-2 max-h-64">
+                            <div className="overflow-x-auto mt-1 max-h-48"> 
                                 <table className="min-w-full divide-y divide-gray-200">
                                     <thead className="bg-gray-50 sticky left-0 z-10">
                                         <tr>
@@ -930,86 +940,115 @@
                 </div>
             );
 
-            // Stage 2: Game Over (Hiển thị Bảng Xếp Hạng cuối cùng)
-            const renderGameOver = () => (
-                <div className="p-6 text-center animate-bounce-in">
-                    <h2 className="text-4xl font-extrabold text-danger mb-6">🎉 TRÒ CHƠI KẾT THÚC! 🎉</h2>
-                    <p className="text-xl font-medium text-gray-700 mb-8">Tổng số ván đã chơi: <span className="text-primary font-bold">{history.length}</span></p>
+            // Stage 2: Game Over (ĐÃ CẬP NHẬT LOGIC BÔI ĐỎ)
+            const renderGameOver = () => {
+                // Sắp xếp theo tổng điểm (cao -> thấp)
+                const sortedScores = [...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore);
+                const playerCount = sortedScores.length;
+                
+                let loserScoreThreshold = null;
 
-                    {/* Bảng Xếp Hạng (SẮP XẾP THEO TỔNG ĐIỂM) */}
-                    <div className="bg-white p-6 rounded-xl shadow-2xl mb-8">
-                        <h3 className="text-2xl font-bold text-primary mb-4 border-b pb-2">🏆 BẢNG XẾP HẠNG</h3>
-                        {/* Sắp xếp unsortedPlayerScores theo tổng điểm */}
-                        {[...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore).map((p, index) => (
-                            <div 
-                                key={p.id} 
-                                className={`flex justify-between items-center py-3 px-4 my-2 rounded-lg transition transform duration-300 ${index === 0 ? 'bg-yellow-100 border-2 border-warning scale-105 shadow-lg' : 'bg-gray-50'}`}
+                // Logic xác định ngưỡng điểm để bôi đỏ (2 người thấp điểm nhất)
+                if (playerCount >= 2) {
+                    // Ngưỡng điểm là điểm của người thấp điểm thứ 2
+                    loserScoreThreshold = sortedScores[playerCount - 2].totalScore;
+                } else {
+                    // Chỉ có 1 người, không bôi đỏ
+                    loserScoreThreshold = null;
+                }
+
+                const isLoser = (p) => {
+                    if (loserScoreThreshold === null) return false;
+                    // Bôi đỏ tất cả người có điểm <= ngưỡng (ngưỡng là điểm của người thấp thứ 2)
+                    return p.totalScore <= loserScoreThreshold;
+                };
+
+                return (
+                    <div className="p-6 text-center animate-bounce-in">
+                        <h2 className="text-4xl font-extrabold text-danger mb-6">🎉 TRÒ CHƠI KẾT THÚC! 🎉</h2>
+                        <p className="text-xl font-medium text-gray-700 mb-8">Tổng số ván đã chơi: <span className="text-primary font-bold">{history.length}</span></p>
+
+                        {/* Bảng Xếp Hạng */}
+                        <div className="bg-white p-6 rounded-xl shadow-2xl mb-8">
+                            <h3 className="text-2xl font-bold text-primary mb-4 border-b pb-2">🏆 BẢNG XẾP HẠNG</h3>
+                            {sortedScores.map((p, index) => {
+                                const isCurrentLoser = isLoser(p);
+                                
+                                const itemClassName = `flex justify-between items-center py-3 px-4 my-2 rounded-lg transition transform duration-300 
+                                                       ${isCurrentLoser ? 'bg-red-100 border-2 border-danger scale-105 shadow-lg' : 'bg-gray-50'}`;
+                                
+                                return (
+                                    <div 
+                                        key={p.id} 
+                                        className={itemClassName}
+                                    >
+                                        <span className={`text-xl font-bold ${isCurrentLoser ? 'text-danger' : 'text-gray-700'}`}>
+                                            {index + 1}. {p.name}
+                                        </span>
+                                        <span className={`text-3xl font-extrabold ${p.totalScore >= 0 ? 'text-secondary' : 'text-danger'} font-mono`}>
+                                            {p.totalScore}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Lịch sử điểm tại màn hình Game Over */}
+                        <div className="bg-white p-4 rounded-xl shadow-lg mb-8">
+                            <button 
+                                onClick={() => setShowGameOverHistory(prev => !prev)}
+                                className="w-full text-left text-lg font-semibold text-gray-700 mb-2 p-2 rounded-lg transition flex justify-between items-center hover:bg-gray-100"
                             >
-                                <span className={`text-xl font-bold ${index === 0 ? 'text-warning' : 'text-gray-700'}`}>
-                                    {index + 1}. {p.name}
-                                </span>
-                                <span className={`text-3xl font-extrabold ${p.totalScore >= 0 ? 'text-secondary' : 'text-danger'} font-mono`}>
-                                    {p.totalScore}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Lịch sử điểm tại màn hình Game Over */}
-                    <div className="bg-white p-4 rounded-xl shadow-lg mb-8">
-                        <button 
-                            onClick={() => setShowGameOverHistory(prev => !prev)}
-                            className="w-full text-left text-lg font-semibold text-gray-700 mb-2 p-2 rounded-lg transition flex justify-between items-center hover:bg-gray-100"
-                        >
-                            Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showGameOverHistory ? '▲' : '▼'}
-                        </button>
-                        {showGameOverHistory && (
-                            <div className="overflow-x-auto mt-2 max-h-64">
-                                <table className="min-w-full divide-y divide-gray-200">
-                                    <thead className="bg-gray-50 sticky left-0 z-10">
-                                        <tr>
-                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 shadow-sm">Người chơi</th>
-                                            {[...Array(history.length)].map((_, index) => (
-                                                <th key={index} className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase min-w-[50px]">Ván {history.length - index}</th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="bg-white divide-y divide-gray-200">
-                                        {/* Dùng players state (unsorted) để đảm bảo thứ tự thống nhất */}
-                                        {players.map(p => (
-                                            <tr key={p.id}>
-                                                <td 
-                                                    className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white shadow-sm truncate" 
-                                                    title={p.name}
-                                                >
-                                                    {p.name}
-                                                </td>
-                                                {[...history].reverse().map(entry => {
-                                                    const score = entry.scores[p.id] || 0;
-                                                    const colorClass = score > 0 ? 'text-secondary font-bold' : (score < 0 ? 'text-danger' : 'text-gray-500');
-                                                    return (
-                                                        <td key={entry.round} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass} min-w-[50px] font-mono`}>
-                                                            {score > 0 ? `+${score}` : score}
-                                                        </td>
-                                                    );
-                                                })}
+                                Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showGameOverHistory ? '▲' : '▼'}
+                            </button>
+                            {showGameOverHistory && (
+                                <div className="overflow-x-auto mt-2 max-h-64">
+                                    <table className="min-w-full divide-y divide-gray-200">
+                                        <thead className="bg-gray-50 sticky left-0 z-10">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 shadow-sm">Người chơi</th>
+                                                {[...Array(history.length)].map((_, index) => (
+                                                    <th key={index} className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase min-w-[50px]">Ván {history.length - index}</th>
+                                                ))}
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                    </div>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                            {/* Dùng players state (unsorted) để đảm bảo thứ tự thống nhất */}
+                                            {players.map(p => (
+                                                <tr key={p.id}>
+                                                    <td 
+                                                        className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white shadow-sm truncate" 
+                                                        title={p.name}
+                                                    >
+                                                        {p.name}
+                                                    </td>
+                                                    {[...history].reverse().map(entry => {
+                                                        const score = entry.scores[p.id] || 0;
+                                                        const colorClass = score > 0 ? 'text-secondary font-bold' : (score < 0 ? 'text-danger' : 'text-gray-500');
+                                                        return (
+                                                            <td key={entry.round} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass} min-w-[50px] font-mono`}>
+                                                                {score > 0 ? `+${score}` : score}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
 
-                    {/* Nút Chơi Lại */}
-                    <button
-                        onClick={confirmResetGame} // Use confirmResetGame logic here for a full reset
-                        className="w-full py-3 bg-secondary text-white font-bold text-xl rounded-xl shadow-lg transition hover:bg-secondary/80"
-                    >
-                        CHƠI LẠI
-                    </button>
-                </div>
-            );
+                        {/* Nút Chơi Lại */}
+                        <button
+                            onClick={confirmResetGame} // Quay lại màn hình setup và xóa dữ liệu
+                            className="w-full py-3 bg-secondary text-white font-bold text-xl rounded-xl shadow-lg transition hover:bg-secondary/80"
+                        >
+                            CHƠI LẠI
+                        </button>
+                    </div>
+                );
+            };
             
             // --- Logic Render Chính ---
 
@@ -1028,12 +1067,10 @@
                     {/* Modal Popup */}
                     <Modal
                         title={modal.type === 'info' ? 'Thông báo' : 
-                               modal.type === 'confirm_undo' ? 'Xác nhận Hoàn tác' : 
-                               modal.type === 'confirm_reset' ? 'Xác nhận Reset Game' : 'Set lại Số Ván Chơi'}
+                               modal.type === 'confirm_action' ? 'Xác nhận' : 'Set lại Số Ván Chơi'}
                         isOpen={modal.isOpen}
                         onClose={() => setModal({ isOpen: false, type: null, data: null })}
-                        onConfirm={modal.type === 'confirm_undo' ? confirmUndo : 
-                                   modal.type === 'confirm_reset' ? confirmResetGame : // NEW CONFIRMATION
+                        onConfirm={modal.type === 'confirm_action' ? modal.data.onConfirm : // Dùng onConfirm động
                                    modal.type === 'reset_rounds' ? confirmResetRounds :
                                    () => setModal({ isOpen: false, type: null, data: null }) 
                                   }

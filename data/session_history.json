@@ -1,0 +1,23 @@
+[
+  {
+    "timestamp": "2025-10-30T07:48:49.543Z",
+    "game": [
+      {
+        "name": "Đông Lê",
+        "rank": 1
+      },
+      {
+        "name": "Định Ngô",
+        "rank": 2
+      },
+      {
+        "name": "Bình Đặng",
+        "rank": 3
+      },
+      {
+        "name": "Dũng Nguyễn",
+        "rank": 4
+      }
+    ]
+  }
+]

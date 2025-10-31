@@ -905,19 +905,20 @@
                             </h3>
                             
                             {/* ĐIỀU CHỈNH: Đưa Input vào cùng hàng với các nút */}
-                            <div className="flex flex-wrap gap-2"> 
+                            <div className="flex flex-wrap gap-2 items-center"> 
                                 {PRESET_ROUNDS.map(r => (
                                     <button
                                         key={r}
                                         onClick={() => setMaxRounds(r)}
-                                        className={`px-3 py-1 text-sm font-medium rounded-full transition duration-200 shadow-md ${parseInt(maxRounds) === r ? 'bg-primary text-white font-bold' : 'bg-gray-200 text-gray-700'}`}
+                                        className={`px-3 py-1 text-sm font-medium rounded-full transition duration-200 shadow-md ${parseInt(maxRounds) === r ? 'bg-primary text-white font-bold' : 'bg-gray-200 text-gray-700'} flex-shrink-0`}
                                     >
                                         {r} Ván
                                     </button>
                                 ))}
                                 
                                 {/* Custom Input Button/Box tích hợp vào flex container */}
-                                <div className="flex-grow min-w-[100px]">
+                                {/* Tối ưu hóa: Bỏ flex-grow, giảm min-w để vừa hơn trên mobile */}
+                                <div className="min-w-[70px] flex-1"> 
                                     <input
                                         type="number"
                                         min="1"
@@ -935,7 +936,7 @@
                                         className={`w-full px-3 py-1 text-sm font-medium border-2 rounded-full text-center shadow-md 
                                                     ${isCustomRound ? 'bg-indigo-100 border-primary text-primary font-bold' : 'bg-gray-200 border-gray-300 text-gray-700'} 
                                                     focus:ring-secondary focus:border-secondary transition`}
-                                        placeholder="Ván tùy chỉnh..."
+                                        placeholder="Ván..."
                                     />
                                 </div>
                             </div>

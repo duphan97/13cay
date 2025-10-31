@@ -932,8 +932,8 @@
                         <div className="mb-4 p-4 bg-white rounded-xl shadow-lg border border-emerald-100">
                             <h3 className="text-md font-semibold mb-3 text-gray-700">2. Thêm Người Chơi ({players.length}/{MAX_PLAYERS})</h3>
                             
-                            {/* THAY ĐỔI: Lưới render từ 'displayList' + Bỏ hover */}
-                            <div className="grid grid-cols-3 gap-2 mb-4">
+                            {/* ĐIỀU CHỈNH: Đổi grid-cols-3 thành grid-cols-2 để ô rộng hơn */}
+                            <div className="grid grid-cols-2 gap-2 mb-4">
                                 {displayList.map(name => {
                                     const isSelected = players.some(p => p.name === name);
                                     const isDisabled = !isSelected && players.length >= MAX_PLAYERS;
@@ -960,7 +960,7 @@
                                 })}
                             </div>
 
-                            {/* Thêm người chơi mới (Tùy chỉnh) + Bỏ hover */}
+                            {/* Thêm người chơi mới (Tùy chỉnh) */}
                             <div className="flex space-x-2 mt-3 pt-3 border-t border-gray-100">
                                 <input
                                     type="text"
@@ -981,7 +981,7 @@
                             
                         </div>
 
-                        {/* Nút Bắt đầu + Bỏ hover/scale */}
+                        {/* Nút Bắt đầu */}
                         <button
                             onClick={handleStartGame}
                             disabled={players.length < 2}
@@ -1001,7 +1001,7 @@
                         VÁN <span className="text-secondary">{history.length + 1}</span> / {parseInt(maxRounds) || 15}
                     </h2>
                     
-                    {/* Nút Ghi/Xác nhận điểm + Bỏ hover */}
+                    {/* Nút Ghi/Xác nhận điểm */}
                      <button
                         onClick={handleNewScoreClick}
                         className={`w-full py-3 font-extrabold text-white rounded-xl shadow-xl transition duration-300 transform mb-4 
@@ -1027,7 +1027,7 @@
                                         </span>
                                     </div>
                                     
-                                    {/* Scoring Input/Controls + Bỏ hover */}
+                                    {/* Scoring Input/Controls */}
                                     {isScoringMode && (
                                         <div className="grid grid-cols-3 w-1/2 gap-1.5">
                                             {/* Nút Giảm */}
@@ -1060,7 +1060,7 @@
                     </div>
                     
                     
-                    {/* Các nút chức năng (grid 2x2) + Bỏ hover */}
+                    {/* Các nút chức năng (grid 2x2) */}
                     <div className="grid grid-cols-2 gap-2 mb-4"> 
                         {/* Hàng 1 */}
                         <button
@@ -1096,7 +1096,7 @@
                     </div>
                     
                     
-                    {/* Lịch sử điểm + Bỏ hover */}
+                    {/* Lịch sử điểm */}
                     <div className="bg-white p-4 rounded-xl shadow-xl border border-gray-200"> 
                         <button 
                             onClick={() => setShowHistory(prev => !prev)}
@@ -1193,7 +1193,7 @@
                             })}
                         </div>
 
-                        {/* Lịch sử điểm tại màn hình Game Over + Bỏ hover */}
+                        {/* Lịch sử điểm tại màn hình Game Over */}
                         <div className="bg-white p-3 rounded-xl shadow-lg mb-4 border border-gray-200">
                             <button 
                                 onClick={() => setShowGameOverHistory(prev => !prev)}
@@ -1238,7 +1238,7 @@
                             )}
                         </div>
 
-                        {/* Nút Chơi Lại + Bỏ hover/scale */}
+                        {/* Nút Chơi Lại */}
                         <button
                             onClick={confirmResetGame} 
                             className="w-full py-3 bg-secondary text-white font-extrabold text-xl rounded-xl shadow-xl transition transform"
@@ -1264,7 +1264,7 @@
                         {gameState === 'game_over' && renderGameOver()}
                     </div>
 
-                    {/* Modal Popup + Bỏ hover */}
+                    {/* Modal Popup */}
                     <Modal
                         title={modal.type === 'info' ? 'Thông báo' : 
                                modal.type === 'confirm_action' ? 'Xác nhận' : 'Set lại Số Ván Chơi'}

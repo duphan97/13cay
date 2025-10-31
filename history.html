@@ -213,6 +213,11 @@
             const allTimeData = useMemo(() => calculateAllTimeData(sessions), [sessions]);
             const allTimeScoreboard = allTimeData.scoreboard;
 
+            // FIX: Đảo ngược mảng sessions để phiên mới nhất hiển thị trước
+            const reversedSessions = useMemo(() => {
+                return sessions ? [...sessions].reverse() : [];
+            }, [sessions]);
+
 
             // --- GIAO DIỆN XÁC THỰC ---
             if (!isAuthenticated) {
@@ -311,7 +316,7 @@
                     
                     {/* DANH SÁCH CHI TIẾT CÁC PHIÊN */}
                     <div className="space-y-8">
-                        {sessions.map((session, index) => {
+                        {reversedSessions.map((session, index) => { // *** ĐÃ SỬ DỤNG reversedSessions ***
                             
                             // Sắp xếp lại theo Rank (1, 2, 3, 4) để hiển thị
                             const sortedGameResults = session.game ? [...session.game].sort((a, b) => a.rank - b.rank) : [];
@@ -322,6 +327,7 @@
                                 <div key={index} className="border border-gray-300 rounded-xl p-5 bg-white shadow-xl hover:shadow-2xl transition duration-200">
                                     <div className="flex justify-between items-center mb-3 border-b pb-3">
                                         <h2 className="text-xl font-bold text-gray-800">
+                                            {/* Công thức đánh số được giữ nguyên (từ lớn nhất đến 1) */}
                                             Phiên #{sessions.length - index}
                                         </h2>
                                         <div className="flex flex-col items-end">

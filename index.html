@@ -888,6 +888,9 @@
                 
                 const displayList = [...PRESET_PLAYERS, ...customPlayerNames];
 
+                // Kiểm tra xem số ván hiện tại có phải là giá trị tùy chỉnh không
+                const isCustomRound = !PRESET_ROUNDS.includes(parseInt(maxRounds));
+
                 return (
                     <div className="p-4 sm:p-6 pb-2">
                         <h2 className="text-xl font-bold text-primary mb-4 text-center">⚙️ Cấu Hình Trò Chơi</h2>
@@ -900,39 +903,49 @@
                                     Hiện tại: {parseInt(maxRounds) || 15}
                                 </span>
                             </h3>
-                            <div className="flex flex-wrap gap-2 mb-3">
+                            
+                            {/* ĐIỀU CHỈNH: Đưa Input vào cùng hàng với các nút */}
+                            <div className="flex flex-wrap gap-2"> 
                                 {PRESET_ROUNDS.map(r => (
                                     <button
                                         key={r}
                                         onClick={() => setMaxRounds(r)}
-                                        className={`px-3 py-1 text-sm font-medium rounded-full transition duration-200 shadow-md ${parseInt(maxRounds) === r ? 'bg-primary text-white' : 'bg-gray-200 text-gray-700'}`}
+                                        className={`px-3 py-1 text-sm font-medium rounded-full transition duration-200 shadow-md ${parseInt(maxRounds) === r ? 'bg-primary text-white font-bold' : 'bg-gray-200 text-gray-700'}`}
                                     >
                                         {r} Ván
                                     </button>
                                 ))}
+                                
+                                {/* Custom Input Button/Box tích hợp vào flex container */}
+                                <div className="flex-grow min-w-[100px]">
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={maxRounds} 
+                                        onChange={(e) => setMaxRounds(e.target.value)} 
+                                        onBlur={(e) => {
+                                            const val = parseInt(e.target.value);
+                                            if (isNaN(val) || val < 1) {
+                                                setMaxRounds(1);
+                                            } else {
+                                                setMaxRounds(val);
+                                            }
+                                        }}
+                                        // Styling mới để hòa hợp và nhấn mạnh khi là tùy chỉnh
+                                        className={`w-full px-3 py-1 text-sm font-medium border-2 rounded-full text-center shadow-md 
+                                                    ${isCustomRound ? 'bg-indigo-100 border-primary text-primary font-bold' : 'bg-gray-200 border-gray-300 text-gray-700'} 
+                                                    focus:ring-secondary focus:border-secondary transition`}
+                                        placeholder="Ván tùy chỉnh..."
+                                    />
+                                </div>
                             </div>
-                            <input
-                                type="number"
-                                min="1"
-                                value={maxRounds} 
-                                onChange={(e) => setMaxRounds(e.target.value)} 
-                                onBlur={(e) => {
-                                    const val = parseInt(e.target.value);
-                                    if (isNaN(val) || val < 1) {
-                                        setMaxRounds(1);
-                                    } else {
-                                        setMaxRounds(val);
-                                    }
-                                }}
-                                className="w-full p-2 border-2 border-gray-300 rounded-lg text-sm mt-1 focus:ring-secondary focus:border-secondary transition"
-                            />
                         </div>
                         
                         {/* Chọn Người Chơi */}
                         <div className="mb-4 p-4 bg-white rounded-xl shadow-lg border border-emerald-100">
                             <h3 className="text-md font-semibold mb-3 text-gray-700">2. Thêm Người Chơi ({players.length}/{MAX_PLAYERS})</h3>
                             
-                            {/* ĐIỀU CHỈNH: Đổi grid-cols-3 thành grid-cols-2 để ô rộng hơn */}
+                            {/* Lưới 2 cột cho người chơi */}
                             <div className="grid grid-cols-2 gap-2 mb-4">
                                 {displayList.map(name => {
                                     const isSelected = players.some(p => p.name === name);

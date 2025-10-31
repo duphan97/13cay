@@ -1046,12 +1046,6 @@
                                         <span className={`text-lg font-bold ${isScoringMode ? 'text-gray-800' : 'text-primary'} truncate`}>
                                             {p.name}
                                         </span>
-                                        {/* Yêu cầu: Bỏ hiển thị tổng điểm khi đang ở màn hình playing */}
-                                        {!isScoringMode && (
-                                            <span className="ml-3 text-xl font-bold text-gray-500 italic">
-                                                (Đang chờ ghi điểm)
-                                            </span>
-                                        )}
                                     </div>
                                     
                                     {/* Scoring Input/Controls: Chỉ hiển thị nếu isScoringMode là true */}
@@ -1319,5 +1313,6 @@
     </script>
 </body>
 </html>
+
 
 

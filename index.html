@@ -464,14 +464,14 @@
                             {showCancel && (
                                 <button
                                     onClick={onClose}
-                                    className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-200 rounded-lg transition hover:bg-gray-300"
+                                    className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-200 rounded-lg transition"
                                 >
                                     {cancelText}
                                 </button>
                             )}
                             <button
                                 onClick={onConfirm}
-                                className="px-4 py-2 text-sm font-semibold text-white bg-secondary rounded-lg transition hover:bg-secondary/80"
+                                className="px-4 py-2 text-sm font-semibold text-white bg-secondary rounded-lg transition"
                             >
                                 {confirmText}
                             </button>
@@ -493,8 +493,6 @@
             const [showGameOverHistory, setShowGameOverHistory] = useState(false);
             const [isScoringMode, setIsScoringMode] = useState(false);
             const [newPlayerName, setNewPlayerName] = useState('');
-            // Yêu cầu: Đặt giá trị mặc định cho selectedPresetPlayer là '' để hiển thị option placeholder
-            const [selectedPresetPlayer, setSelectedPresetPlayer] = useLocalStorageState('selectedPresetPlayer', ''); 
             const [roundScoreInputs, setRoundScoreInputs] = useLocalStorageState('roundScoreInputs', {});
             const [modal, setModal] = useState({ isOpen: false, type: null, data: null });
             const [newMaxRoundsInput, setNewMaxRoundsInput] = useState(15);
@@ -612,8 +610,7 @@
                 setIsScoringMode(false);
                 setRoundScoreInputs({});
                 setModal({ isOpen: false, type: null, data: null });
-                addToQueue(['hoantac']); // Yêu cầu 2: Thêm audio Hoàn tác
-                // Xóa cờ sessionStorage để cho phép lưu lại nếu game kết thúc lại
+                addToQueue(['hoantac']); 
                 sessionStorage.removeItem(`game_saved_${history.length}`); 
             };
             
@@ -634,9 +631,7 @@
                 setIsScoringMode(false);
                 setRoundScoreInputs({});
                 setMaxRounds(15); 
-                setSelectedPresetPlayer(''); // Reset selected preset player
                 localStorage.clear(); 
-                // Xóa tất cả các cờ game_saved trong sessionStorage
                 Object.keys(sessionStorage).forEach(key => {
                     if (key.startsWith('game_saved_')) {
                         sessionStorage.removeItem(key);
@@ -674,10 +669,8 @@
 
             // --- Xử lý Stage: Setup (Giai đoạn I) ---
             
-            // Yêu cầu 1: Bổ sung logic Add/Remove player từ Dropdown
-            const handleAddPresetPlayer = () => {
-                // Kiểm tra luôn cả giá trị '' (placeholder)
-                if (!selectedPresetPlayer) return; 
+            const handleAddPresetPlayer = (nameToAdd) => {
+                if (!nameToAdd) return; 
 
                 if (players.length >= MAX_PLAYERS) {
                     setModal({
@@ -688,7 +681,7 @@
                     return;
                 }
 
-                const trimmedName = selectedPresetPlayer.trim();
+                const trimmedName = nameToAdd.trim();
                 if (players.some(p => p.name.toLowerCase() === trimmedName.toLowerCase())) {
                     setModal({
                         isOpen: true,
@@ -698,11 +691,8 @@
                     return;
                 }
 
-                // Thêm người chơi (luôn là Preset, isCustom=false)
                 const newPlayer = createPlayerObject(trimmedName, false, players);
                 setPlayers([...players, newPlayer]);
-                // Sau khi thêm, reset lại dropdown về placeholder
-                setSelectedPresetPlayer(''); 
             };
 
             const handleRemovePlayer = (playerName) => {
@@ -710,6 +700,14 @@
                 if (existingPlayer) {
                     const newPlayers = players.filter(p => p.id !== existingPlayer.id);
                     setPlayers(newPlayers);
+                }
+            };
+            
+            const handleTogglePresetPlayer = (name) => {
+                if (players.some(p => p.name === name)) {
+                    handleRemovePlayer(name);
+                } else {
+                    handleAddPresetPlayer(name);
                 }
             };
 
@@ -727,7 +725,7 @@
                     return;
                 }
                 
-                if (players.some(p => p.name.toLowerCase() === trimmedName.toLowerCase())) {
+                if (players.some(p => p.name.toLowerCase() === trimmedName.toLowerCase()) || PRESET_PLAYERS.some(p => p.toLowerCase() === trimmedName.toLowerCase())) {
                      setModal({
                         isOpen: true,
                         type: 'info',
@@ -736,7 +734,6 @@
                     return;
                 }
                 
-                // Thêm người chơi mới (isCustom=true)
                 const newPlayer = createPlayerObject(trimmedName, true, players);
                 setPlayers([...players, newPlayer]);
                 setNewPlayerName('');
@@ -775,7 +772,6 @@
                 if (!isScoringMode) {
                     addToQueue(['vanmoi']); 
                     setIsScoringMode(true);
-                    // Dùng unsortedPlayerScores (players) để giữ nguyên thứ tự
                     const initialInputs = unsortedPlayerScores.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
                     setRoundScoreInputs(initialInputs);
                 } else {
@@ -791,7 +787,6 @@
             const handleConfirmScore = () => {
                 const newRoundScores = {};
 
-                // Chuẩn hóa điểm
                 unsortedPlayerScores.forEach(p => {
                     const score = roundScoreInputs[p.id];
                     if (score === '' || score === null || isNaN(score)) {
@@ -801,7 +796,6 @@
                     }
                 });
 
-                // Ghi kết quả vào lịch sử
                 const newHistoryEntry = {
                     round: history.length + 1,
                     scores: newRoundScores,
@@ -809,15 +803,12 @@
                 };
                 setHistory(prev => [...prev, newHistoryEntry]);
 
-                // Phát âm thanh theo logic mới (sắp xếp theo điểm ván vừa ghi)
                 playScoreAudio(newRoundScores);
 
-                // Reset trạng thái
                 setIsScoringMode(false);
                 setRoundScoreInputs({});
             };
             
-            // Xử lý Set Rounds - Giữ nguyên flow cũ (input modal)
             const handleSetRoundsClick = () => {
                 if (isScoringMode) return;
                  setModal({
@@ -849,7 +840,7 @@
                 
                 setMaxRounds(newMax);
                 setModal({ isOpen: false, type: null, data: null });
-                addToQueue(['dasetsovan']); // Yêu cầu 2: Thêm audio Set Ván
+                addToQueue(['dasetsovan']); 
                 
                 if (history.length >= newMax) {
                     setGameState('game_over');
@@ -889,8 +880,14 @@
             
             // Stage 0: Setup
             const renderSetup = () => {
-                const availablePresetPlayers = PRESET_PLAYERS.filter(name => !players.some(p => p.name === name));
                 
+                // THAY ĐỔI: Tạo danh sách hiển thị bao gồm cả người chơi tùy chỉnh
+                const customPlayerNames = players
+                    .map(p => p.name)
+                    .filter(name => !PRESET_PLAYERS.includes(name));
+                
+                const displayList = [...PRESET_PLAYERS, ...customPlayerNames];
+
                 return (
                     <div className="p-4 sm:p-6 pb-2">
                         <h2 className="text-xl font-bold text-primary mb-4 text-center">⚙️ Cấu Hình Trò Chơi</h2>
@@ -908,7 +905,7 @@
                                     <button
                                         key={r}
                                         onClick={() => setMaxRounds(r)}
-                                        className={`px-3 py-1 text-sm font-medium rounded-full transition duration-200 shadow-md ${parseInt(maxRounds) === r ? 'bg-primary text-white hover:bg-primary/90' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                                        className={`px-3 py-1 text-sm font-medium rounded-full transition duration-200 shadow-md ${parseInt(maxRounds) === r ? 'bg-primary text-white' : 'bg-gray-200 text-gray-700'}`}
                                     >
                                         {r} Ván
                                     </button>
@@ -933,36 +930,37 @@
                         
                         {/* Chọn Người Chơi */}
                         <div className="mb-4 p-4 bg-white rounded-xl shadow-lg border border-emerald-100">
-                            <h3 className="text-md font-semibold mb-3 text-gray-700">2. Thêm Người Chơi</h3>
+                            <h3 className="text-md font-semibold mb-3 text-gray-700">2. Thêm Người Chơi ({players.length}/{MAX_PLAYERS})</h3>
                             
-                            {/* Dropdown và Nút Thêm (Yêu cầu: Placeholder) */}
-                            <div className="flex space-x-2 mb-3">
-                                <select
-                                    value={selectedPresetPlayer}
-                                    onChange={(e) => setSelectedPresetPlayer(e.target.value)}
-                                    className="flex-grow p-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-secondary focus:border-secondary disabled:bg-gray-100"
-                                    disabled={players.length >= MAX_PLAYERS || availablePresetPlayers.length === 0}
-                                >
-                                    {/* Yêu cầu: Placeholder cho dropdown */}
-                                    <option value="" disabled className="text-gray-400">Chọn người chơi có sẵn</option> 
+                            {/* THAY ĐỔI: Lưới render từ 'displayList' + Bỏ hover */}
+                            <div className="grid grid-cols-3 gap-2 mb-4">
+                                {displayList.map(name => {
+                                    const isSelected = players.some(p => p.name === name);
+                                    const isDisabled = !isSelected && players.length >= MAX_PLAYERS;
                                     
-                                    {availablePresetPlayers.length > 0 && availablePresetPlayers.map(name => (
-                                        <option key={name} value={name}>{name}</option>
-                                    ))}
-                                    {availablePresetPlayers.length === 0 && (
-                                        <option value="" disabled>Không còn người chơi có sẵn</option>
-                                    )}
-                                </select>
-                                <button
-                                    onClick={handleAddPresetPlayer}
-                                    className="p-2 bg-secondary text-white rounded-lg font-semibold text-sm transition disabled:bg-gray-400 hover:bg-secondary/80"
-                                    disabled={!selectedPresetPlayer || players.length >= MAX_PLAYERS || availablePresetPlayers.length === 0}
-                                >
-                                    Thêm
-                                </button>
+                                    return (
+                                        <button
+                                            key={name}
+                                            onClick={() => handleTogglePresetPlayer(name)}
+                                            disabled={isDisabled}
+                                            className={`p-2 rounded-lg border-2 transition-all duration-200 ease-in-out 
+                                                        flex items-center justify-center relative text-sm font-medium text-center
+                                                        ${isSelected 
+                                                            ? 'bg-secondary border-secondary/50 text-white font-bold shadow-lg'
+                                                            : 'bg-secondary/10 border-secondary/30 text-gray-700'}
+                                                        ${isDisabled ? 'opacity-50 cursor-not-allowed bg-gray-100 border-gray-200' : ''}
+                                                    `}
+                                        >
+                                            {isSelected && (
+                                                <span className="absolute -top-2 -right-2 bg-white text-secondary rounded-full w-5 h-5 flex items-center justify-center text-sm font-bold border border-secondary/50">✓</span>
+                                            )}
+                                            {name}
+                                        </button>
+                                    );
+                                })}
                             </div>
 
-                            {/* Thêm người chơi mới (Tùy chỉnh) */}
+                            {/* Thêm người chơi mới (Tùy chỉnh) + Bỏ hover */}
                             <div className="flex space-x-2 mt-3 pt-3 border-t border-gray-100">
                                 <input
                                     type="text"
@@ -974,7 +972,7 @@
                                 />
                                 <button
                                     onClick={handleAddNewPlayer}
-                                    className="p-2 bg-primary text-white rounded-lg font-semibold text-sm transition disabled:bg-gray-400 hover:bg-primary/80"
+                                    className="p-2 bg-primary text-white rounded-lg font-semibold text-sm transition disabled:bg-gray-400"
                                     disabled={!newPlayerName.trim() || players.length >= MAX_PLAYERS}
                                 >
                                     Thêm
@@ -983,30 +981,11 @@
                             
                         </div>
 
-                        {/* Danh sách người chơi đã chọn */}
-                        <div className="mb-6 p-4 bg-indigo-50 rounded-xl border border-indigo-200 shadow-inner">
-                            <h3 className="text-md font-semibold text-primary mb-2">Người chơi đã chọn ({players.length}/{MAX_PLAYERS}):</h3>
-                            <div className="flex flex-wrap gap-2">
-                                {players.map(p => (
-                                    <span key={p.id} className="bg-primary text-white text-xs px-3 py-1 rounded-full flex items-center font-medium shadow-sm">
-                                        {p.name}
-                                        <button 
-                                            onClick={() => handleRemovePlayer(p.name)}
-                                            className="ml-2 text-white/80 font-bold text-sm hover:text-white"
-                                        >
-                                            &times;
-                                        </button>
-                                    </span>
-                                ))}
-                            </div>
-                            {players.length === 0 && <p className="text-sm text-gray-500 italic mt-2">Chưa có người chơi nào được chọn.</p>}
-                        </div>
-
-                        {/* Nút Bắt đầu */}
+                        {/* Nút Bắt đầu + Bỏ hover/scale */}
                         <button
                             onClick={handleStartGame}
                             disabled={players.length < 2}
-                            className="w-full py-4 bg-secondary text-white font-extrabold text-lg rounded-xl shadow-2xl transition duration-300 transform hover:scale-[1.01] disabled:bg-gray-400"
+                            className="w-full py-4 bg-secondary text-white font-extrabold text-lg rounded-xl shadow-2xl transition duration-300 transform disabled:bg-gray-400 mt-6"
                         >
                             {players.length < 2 ? 'Cần 2 người chơi để bắt đầu' : `BẮT ĐẦU TRÒ CHƠI (${parseInt(maxRounds) || 15} VÁN)`}
                         </button>
@@ -1022,11 +1001,11 @@
                         VÁN <span className="text-secondary">{history.length + 1}</span> / {parseInt(maxRounds) || 15}
                     </h2>
                     
-                    {/* Nút Ghi/Xác nhận điểm (Yêu cầu 3: Hiệu ứng động) */}
+                    {/* Nút Ghi/Xác nhận điểm + Bỏ hover */}
                      <button
                         onClick={handleNewScoreClick}
                         className={`w-full py-3 font-extrabold text-white rounded-xl shadow-xl transition duration-300 transform mb-4 
-                            ${isScoringMode ? 'bg-secondary animate-pulse-strong text-lg' : 'bg-primary text-base hover:bg-primary/90'}`} 
+                            ${isScoringMode ? 'bg-secondary animate-pulse-strong text-lg' : 'bg-primary text-base'}`} 
                         disabled={unsortedPlayerScores.length === 0}
                     >
                         {isScoringMode ? `✅ XÁC NHẬN GHI ĐIỂM VÁN ${history.length + 1}` : 'GHI ĐIỂM VÁN MỚI'}
@@ -1048,13 +1027,13 @@
                                         </span>
                                     </div>
                                     
-                                    {/* Scoring Input/Controls: Chỉ hiển thị nếu isScoringMode là true */}
+                                    {/* Scoring Input/Controls + Bỏ hover */}
                                     {isScoringMode && (
                                         <div className="grid grid-cols-3 w-1/2 gap-1.5">
                                             {/* Nút Giảm */}
                                             <button 
                                                 onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) - 1)}
-                                                className="p-2 bg-danger text-white rounded-xl font-extrabold text-xl transition duration-150 hover:bg-danger/80 shadow-md" 
+                                                className="p-2 bg-danger text-white rounded-xl font-extrabold text-xl transition duration-150 shadow-md" 
                                             >
                                                 -
                                             </button>
@@ -1069,7 +1048,7 @@
                                             {/* Nút Tăng */}
                                             <button 
                                                 onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) + 1)}
-                                                className="p-2 bg-secondary text-white rounded-xl font-extrabold text-xl transition duration-150 hover:bg-secondary/80 shadow-md" 
+                                                className="p-2 bg-secondary text-white rounded-xl font-extrabold text-xl transition duration-150 shadow-md" 
                                             >
                                                 +
                                             </button>
@@ -1081,44 +1060,47 @@
                     </div>
                     
                     
-                    {/* Các nút chức năng (4 nút) */}
-                    <div className="flex justify-between space-x-2 mb-4"> 
-                         <button
-                            onClick={handleUndo} 
-                            disabled={history.length === 0 || isScoringMode}
-                            className="flex-1 py-3 bg-warning text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm hover:bg-warning/80 shadow-md"
-                        >
-                            ↩️ Hoàn Tác
-                        </button>
+                    {/* Các nút chức năng (grid 2x2) + Bỏ hover */}
+                    <div className="grid grid-cols-2 gap-2 mb-4"> 
+                        {/* Hàng 1 */}
                         <button
                             onClick={handleSetRoundsClick} 
                             disabled={isScoringMode}
-                            className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm hover:bg-blue-600/80 shadow-md"
+                            className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm shadow-md"
                         >
                             🔁 Set Ván
                         </button>
+                         <button
+                            onClick={handleUndo} 
+                            disabled={history.length === 0 || isScoringMode}
+                            className="w-full py-3 bg-warning text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm shadow-md"
+                        >
+                            ↩️ Hoàn Tác
+                        </button>
+                        
+                        {/* Hàng 2 */}
                         <button
                             onClick={handleResetGame} 
                             disabled={isScoringMode}
-                            className="flex-1 py-3 bg-danger text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm hover:bg-danger/80 shadow-md"
+                            className="w-full py-3 bg-danger text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm shadow-md"
                         >
                             🔄 Reset
                         </button>
                         <button
                             onClick={handleEndGameConfirm} 
                             disabled={isScoringMode}
-                            className="flex-1 py-3 bg-gray-600 text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm hover:bg-gray-600/80 shadow-md"
+                            className="w-full py-3 bg-gray-600 text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm shadow-md"
                         >
                             🛑 Kết Thúc
                         </button>
                     </div>
                     
                     
-                    {/* Lịch sử điểm */}
+                    {/* Lịch sử điểm + Bỏ hover */}
                     <div className="bg-white p-4 rounded-xl shadow-xl border border-gray-200"> 
                         <button 
                             onClick={() => setShowHistory(prev => !prev)}
-                            className="w-full text-left text-lg font-bold text-gray-700 p-1 rounded-lg transition flex justify-between items-center hover:bg-gray-100"
+                            className="w-full text-left text-lg font-bold text-gray-700 p-1 rounded-lg transition flex justify-between items-center"
                         >
                             Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showHistory ? '▲' : '▼'}
                         </button>
@@ -1163,7 +1145,6 @@
 
             // Stage 2: Game Over
             const renderGameOver = () => {
-                // sortedScores đã được tính toán ở useMemo
                 const playerCount = sortedScores.length;
                 
                 let loserScoreThreshold = null;
@@ -1177,9 +1158,7 @@
                 };
 
                 return (
-                    // Giảm padding/margin tổng thể
                     <div className="p-4 text-center animate-bounce-in">
-                        {/* Thu gọn khoảng cách tiêu đề */}
                         <h2 className="text-2xl font-extrabold text-danger mb-1">🎉 TRÒ CHƠI KẾT THÚC! 🎉</h2>
                         <p className="text-base font-medium text-gray-700 mb-3">Tổng số ván đã chơi: <span className="text-primary font-bold">{history.length}</span></p>
 
@@ -1189,7 +1168,6 @@
                             {sortedScores.map((p, index) => {
                                 const isCurrentLoser = isLoser(p);
                                 
-                                // Thiết kế mới: Huy hiệu và font to
                                 const itemClassName = `flex justify-between items-center py-2 px-3 my-2 rounded-xl transition transform duration-300 shadow-md 
                                                        ${isCurrentLoser ? 'bg-red-100 border-2 border-danger scale-[1.03]' : 'bg-gray-50 border-2 border-secondary/50'}`;
                                 
@@ -1199,17 +1177,14 @@
                                         className={itemClassName}
                                     >
                                         <div className="flex items-center space-x-2">
-                                            {/* Huy hiệu thứ hạng */}
                                             <span className={`text-xl font-extrabold w-6 text-center 
                                                               ${index === 0 ? 'text-yellow-500' : index === 1 ? 'text-gray-400' : index === 2 ? 'text-amber-700' : 'text-primary'}`}>
                                                 #{index + 1}
                                             </span>
-                                            {/* Tên người chơi */}
                                             <span className={`text-lg font-bold ${isCurrentLoser ? 'text-danger' : 'text-gray-700'}`}>
                                                 {p.name}
                                             </span>
                                         </div>
-                                        {/* Tổng điểm */}
                                         <span className={`text-2xl font-extrabold ${p.totalScore >= 0 ? 'text-secondary' : 'text-danger'} font-mono`}>
                                             {p.totalScore}
                                         </span>
@@ -1218,11 +1193,11 @@
                             })}
                         </div>
 
-                        {/* Lịch sử điểm tại màn hình Game Over */}
+                        {/* Lịch sử điểm tại màn hình Game Over + Bỏ hover */}
                         <div className="bg-white p-3 rounded-xl shadow-lg mb-4 border border-gray-200">
                             <button 
                                 onClick={() => setShowGameOverHistory(prev => !prev)}
-                                className="w-full text-left text-lg font-bold text-gray-700 p-1 rounded-lg transition flex justify-between items-center hover:bg-gray-100"
+                                className="w-full text-left text-lg font-bold text-gray-700 p-1 rounded-lg transition flex justify-between items-center"
                             >
                                 Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showGameOverHistory ? '▲' : '▼'}
                             </button>
@@ -1263,10 +1238,10 @@
                             )}
                         </div>
 
-                        {/* Nút Chơi Lại */}
+                        {/* Nút Chơi Lại + Bỏ hover/scale */}
                         <button
                             onClick={confirmResetGame} 
-                            className="w-full py-3 bg-secondary text-white font-extrabold text-xl rounded-xl shadow-xl transition hover:bg-secondary/90 transform hover:scale-[1.01]"
+                            className="w-full py-3 bg-secondary text-white font-extrabold text-xl rounded-xl shadow-xl transition transform"
                         >
                             CHƠI LẠI
                         </button>
@@ -1289,7 +1264,7 @@
                         {gameState === 'game_over' && renderGameOver()}
                     </div>
 
-                    {/* Modal Popup */}
+                    {/* Modal Popup + Bỏ hover */}
                     <Modal
                         title={modal.type === 'info' ? 'Thông báo' : 
                                modal.type === 'confirm_action' ? 'Xác nhận' : 'Set lại Số Ván Chơi'}
@@ -1313,6 +1288,3 @@
     </script>
 </body>
 </html>
-
-
-

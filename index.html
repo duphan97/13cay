@@ -20,6 +20,26 @@
                     },
                     boxShadow: {
                         '3xl': '0 35px 60px -15px rgba(0, 0, 0, 0.3)',
+                    },
+                    keyframes: {
+                        'fade-in': {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        'bounce-in': {
+                            '0%': { transform: 'scale(0.9)', opacity: '0' },
+                            '60%': { transform: 'scale(1.05)', opacity: '1' },
+                            '100%': { transform: 'scale(1)' },
+                        },
+                        'pulse-strong': {
+                            '0%, 100%': { transform: 'scale(1)', filter: 'brightness(1)' },
+                            '50%': { transform: 'scale(1.05)', filter: 'brightness(1.1)' },
+                        }
+                    },
+                    animation: {
+                        'fade-in': 'fade-in 0.3s ease-out',
+                        'bounce-in': 'bounce-in 0.4s ease-out',
+                        'pulse-strong': 'pulse-strong 1.5s infinite',
                     }
                 }
             }
@@ -29,1293 +49,1254 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-use-localstorage-state/lib/index.umd.js"></script> 
     
-    <style>
-        /* Áp dụng Font Quicksand */
-        body {
-            font-family: 'Quicksand', sans-serif;
-        }
-        
-        @keyframes bounce-in {
-            0%, 20%, 40%, 60%, 80%, 100% {
-                transition-timing-function: cubic-bezier(0.215, 0.610, 0.355, 1.000);
-            }
-            0% { opacity: 0; transform: scale3d(.3, .3, .3); }
-            40% { transform: scale3d(1.1, 1.1, 1.1); }
-            80% { transform: scale3d(.97, .97, .97); }
-            100% { opacity: 1; transform: scale3d(1, 1, 1); }
-        }
-        .animate-bounce-in {
-            animation: bounce-in 0.8s;
-        }
-        @keyframes fade-in {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in {
-            animation: fade-in 0.3s ease-out;
-        }
-        @keyframes pulse-strong {
-            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } /* Emerald 500 */
-            50% { opacity: 0.8; box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-        }
-        .animate-pulse-strong {
-            animation: pulse-strong 1.5s infinite;
-        }
-    </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-gray-50">
     <div id="root"></div>
 
-	<script type="text/babel">
-			const { useState, useEffect, useRef, useCallback, useMemo } = React;
-			const MAX_PLAYERS = 4;
-			
-			// Cấu hình đường dẫn cho âm thanh cục bộ
-			const AUDIO_BASE_PATH = 'audio/';
-			
-			// Audio dự phòng cho người chơi tự thêm từ bàn phím
-			const FALLBACK_AUDIOS = ['member1', 'member2', 'member3', 'member4']; 
-
-			// Danh sách tên người chơi có sẵn
-			const PRESET_PLAYERS = [
-				"Bình Đặng", 
-				"Dũng Hoàng", 
-				"Dũng Nguyễn", 
-				"Định Ngô", 
-				"Đông Lê", 
-				"Khánh Đỗ", 
-				"Minh Anh", 
-				"Nhân Trần", 
-				"Quý Huỳnh", 
-				"Trúc Trần"
-			];
-			const PRESET_ROUNDS = [15, 21, 31];
-			
-			// --- CẤU HÌNH GITHUB API ---
-			const GITHUB_TOKEN_PART1 = 'github_pat_11AHU2I4Q0eTQynszWYAnj_';
-			const GITHUB_TOKEN_PART2 = 'g3icOcB6W3He3EFtkB3rEuvAIst0GQQf50IaXXPDllERWI7ZWWJF0pB4QeI'; 
-			const GITHUB_TOKEN = GITHUB_TOKEN_PART1 + GITHUB_TOKEN_PART2; 
-			const REPO_OWNER = 'duphan97';
-			const REPO_NAME = '13cay';
-			const DATA_FILE_PATH = 'data/session_history.json'; 
-			const GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${DATA_FILE_PATH}`;
-			// --- HẾT CẤU HÌNH GITHUB API ---
-
-
-			// --- 1. Custom Hooks & Utilities ---
-
-			// Hàm chuẩn hóa tên người chơi thành tên file không dấu, không khoảng trắng, chữ thường
-			const normalizeName = (name) => {
-				return name
-					.toLowerCase()
-					.normalize("NFD")
-					.replace(/[\u00c0-\u036f]/g, "") // bỏ dấu
-					.replace(/đ/g, 'd')             // đổi đ -> d
-					.replace(/\s+/g, '');           // bỏ khoảng trắng
-			};
-
-			// Hàm tạo ID duy nhất
-			const generateId = () => Math.random().toString(36).substring(2, 9);
-			
-			// HÀM TẠO ĐỐI TƯỢNG NGƯỜI CHƠI HOÀN CHỈNH (với audioFile)
-			const createPlayerObject = (name, isCustom = false, existingPlayers = []) => {
-				const normalizedName = normalizeName(name);
-				let audioFileName = normalizedName;
-				
-				// ID dựa trên tên chuẩn hóa + ID ngẫu nhiên để đảm bảo tính duy nhất
-				const id = normalizedName + generateId(); 
-
-				if (isCustom) {
-					// Lọc ra các file dự phòng đã được sử dụng
-					const usedFallbacks = existingPlayers
-						.map(p => p.audioFile)
-						.filter(audio => FALLBACK_AUDIOS.includes(audio));
-					
-					// Tìm file dự phòng đầu tiên chưa được sử dụng
-					const availableFallback = FALLBACK_AUDIOS.find(f => !usedFallbacks.includes(f));
-
-					if (availableFallback) {
-						audioFileName = availableFallback;
-					} else {
-						// Nếu quá 4 người chơi tự thêm, quay lại dùng tên chuẩn hóa (cần file riêng)
-						audioFileName = normalizedName;
-						console.warn("Đã sử dụng hết file audio dự phòng (member1-4). Người chơi mới sẽ dùng tên chuẩn hóa, cần file audio tương ứng.");
-					}
-				} else {
-					// Người chơi trong danh sách có sẵn, sử dụng tên chuẩn hóa
-					audioFileName = normalizedName;
-				}
-				
-				return { id, name: name.trim(), audioFile: audioFileName };
-			};
-
-
-			// Custom Hook: Xử lý Audio theo hàng đợi
-			const useAudioQueue = () => {
-				const audioQueue = useRef([]); 
-				const isPlaying = useRef(false); 
-
-				const preloadAudioSequence = useCallback((soundNames) => {
-					
-					const loadAudioWithRetry = (name, maxRetries = 3) => {
-						if (!name || name === '') {
-							return Promise.resolve(null);
-						}
-						
-						const fullPath = `${AUDIO_BASE_PATH}${name}.mp3`;
-						const audio = new Audio(fullPath);
-						audio.volume = 0.8;
-						let attempts = 0;
-
-						return new Promise((resolve, reject) => {
-							const tryLoad = () => {
-								attempts++;
-								
-								if (audio.readyState >= 2) { 
-									resolve(audio);
-									return;
-								}
-								
-								const handleSuccess = () => {
-									audio.removeEventListener('error', handleError); 
-									resolve(audio);
-								};
-								
-								const handleError = (e) => {
-									audio.removeEventListener('canplaythrough', handleSuccess);
-									audio.removeEventListener('error', handleError); 
-									
-									if (attempts < maxRetries) {
-										setTimeout(tryLoad, 500); 
-									} else {
-										console.error(`[LỖI TẢI FILE] Thất bại sau ${maxRetries} lần thử cho: ${audio.src}. Bỏ qua file.`);
-										reject(new Error(`Failed to load ${audio.src}.`));
-									}
-								};
-
-								audio.addEventListener('canplaythrough', handleSuccess, { once: true });
-								audio.addEventListener('error', handleError, { once: true });
-								
-								audio.load();
-							};
-							
-							tryLoad();
-						});
-					};
-
-					const loadPromises = soundNames.map(name => loadAudioWithRetry(name).catch(e => {
-						console.warn(`Tải file "${name}.mp3" thất bại, sẽ bỏ qua.`);
-						return null;
-					}));
-
-
-					return Promise.all(loadPromises)
-						.then(audioObjects => audioObjects.filter(obj => obj !== null))
-						.catch(error => {
-							console.warn('Toàn bộ chuỗi phát âm thanh này đã bị bỏ qua do lỗi tải file đã được ghi nhận ở trên.');
-							return []; 
-						});
-
-				}, []);
-
-				const playNext = useCallback(() => {
-					if (audioQueue.current.length > 0 && !isPlaying.current) {
-						isPlaying.current = true;
-						const currentSequence = audioQueue.current.shift(); 
-						let currentAudioIndex = 0;
-
-						const playSequence = () => {
-							if (currentAudioIndex >= currentSequence.length) {
-								isPlaying.current = false; 
-								playNext(); 
-								return;
-							}
-
-							const audio = currentSequence[currentAudioIndex];
-							
-							audio.onended = () => {
-								currentAudioIndex++;
-								playSequence(); 
-							};
-
-							audio.play().catch(e => {
-								console.warn("Autoplay was prevented or playback error:", audio.src, e);
-								currentAudioIndex++;
-								playSequence();
-							});
-						};
-
-						if (currentSequence.length > 0) {
-							playSequence();
-						} else {
-							isPlaying.current = false;
-							playNext();
-						}
-					}
-				}, []);
-
-				const addToQueue = useCallback((soundNamesArray) => {
-					const loadingPromise = preloadAudioSequence(soundNamesArray)
-						.then(preloadedAudioObjects => {
-							if (preloadedAudioObjects.length > 0) {
-								audioQueue.current.push(preloadedAudioObjects);
-							}
-						})
-						.finally(() => {
-							if (!isPlaying.current) {
-								playNext();
-							}
-						});
-
-					return loadingPromise; 
-				}, [playNext, preloadAudioSequence]);
-
-
-				const addMultipleSequencesToQueue = useCallback((sequences) => {
-					
-					const loadingPromises = sequences.map(soundNamesArray => {
-						 return preloadAudioSequence(soundNamesArray);
-					});
-
-					Promise.all(loadingPromises)
-						.then(allPreloadedSequences => {
-							allPreloadedSequences.forEach(preloadedAudioObjects => {
-								if (preloadedAudioObjects && preloadedAudioObjects.length > 0) {
-									audioQueue.current.push(preloadedAudioObjects);
-								}
-							});
-						})
-						.finally(() => {
-							if (!isPlaying.current) {
-								playNext();
-							}
-						});
-
-				}, [playNext, preloadAudioSequence]);
-
-
-				return { 
-					addToQueue: addToQueue,
-					addMultipleSequencesToQueue: addMultipleSequencesToQueue
-				};
-			};
-
-
-			// Custom Hook: Quản lý State với LocalStorage
-			const useLocalStorageState = (key, defaultValue) => {
-				const [state, setState] = useState(() => {
-					const storedValue = localStorage.getItem(key);
-					try {
-						return storedValue ? JSON.parse(storedValue) : defaultValue;
-					} catch (e) {
-						console.error("Lỗi khi parse localStorage:", e);
-						return defaultValue;
-					}
-				});
-
-				useEffect(() => {
-					try {
-						localStorage.setItem(key, JSON.stringify(state));
-					} catch (e) {
-						console.error("Lỗi khi lưu vào localStorage:", e);
-					}
-				}, [key, state]);
-
-				return [state, setState];
-			};
-			
-			// --- Logic Ghi lịch sử lên GitHub (Yêu cầu 5 & Bổ sung chống trùng lặp) ---
-			// *** CẬP NHẬT: Thêm 'startTime' làm tham số ***
-			const useGitHubHistory = (sortedScores, gameState, history, startTime) => { 
-				const historyRef = useRef([]); 
-				const shaRef = useRef(null); 
-				
-				// TẠO MỘT KHÓA DUY NHẤT CHO TRẠNG THÁI GAME HIỆN TẠI (Dựa trên tổng số ván đã chơi)
-				const currentSessionKey = `game_saved_${history.length}`;
-				
-				const getAndSetSha = useCallback(async () => {
-					try {
-						const response = await fetch(GITHUB_API_URL, {
-							headers: {
-								'Authorization': `token ${GITHUB_TOKEN}`,
-								'Accept': 'application/vnd.github.v3+json'
-							}
-						});
-
-						if (response.status === 404) {
-							// File not found, need to create it
-							shaRef.current = null;
-							return [];
-						}
-
-						if (!response.ok) {
-							throw new Error(`GitHub GET failed with status: ${response.status}`);
-						}
-
-						const data = await response.json();
-						shaRef.current = data.sha;
-						
-						// Decode content
-						const decodedContent = atob(data.content);
-						// Decode Base64 string to original UTF-8 string
-						const utf8String = decodeURIComponent(escape(decodedContent));
-						
-						const existingHistory = JSON.parse(utf8String);
-						return Array.isArray(existingHistory) ? existingHistory : [];
-
-					} catch (error) {
-						console.error("Lỗi khi lấy lịch sử từ GitHub:", error);
-						shaRef.current = null;
-						return []; 
-					}
-				}, []);
-
-				const saveHistoryToGithub = useCallback(async (currentSortedScores) => {
-					// KIỂM TRA SESSION STORAGE TRƯỚC KHI LƯU
-					if (sessionStorage.getItem(currentSessionKey) === 'true') {
-						console.log("Lịch sử ván chơi này đã được lưu. Bỏ qua lưu GitHub.");
-						return; // Ngăn chặn việc lưu trùng lặp
-					}
-					
-					if (!currentSortedScores || currentSortedScores.length === 0) {
-						console.log("Không có điểm để lưu. Bỏ qua lưu GitHub.");
-						return;
-					}
-					
-					try {
-						// 1. Lấy lịch sử hiện tại và SHA
-						const existingHistory = await getAndSetSha();
-						
-						// *** CẬP NHẬT: Thêm startTime và endTime vào newEntry ***
-						const newEntry = {
-							startTime: startTime, // Thời gian bắt đầu (từ state)
-							endTime: new Date().toISOString(), // Thời gian kết thúc (lúc lưu)
-							game: currentSortedScores.map((p, index) => ({
-								name: p.name,
-								rank: index + 1, // Thứ hạng 1, 2, 3, 4
-							}))
-						};
-						
-						const newHistory = [...existingHistory, newEntry];
-						
-						// 3. Chuẩn bị nội dung cho API (UTF-8 và Base64)
-						const contentString = JSON.stringify(newHistory, null, 2);
-						
-						// Encode UTF-8 string to Base64 (Hỗ trợ tiếng Việt có dấu)
-						const base64Content = btoa(unescape(encodeURIComponent(contentString)));
-						
-						const payload = {
-							message: `Hoàn tất game vào lúc ${new Date().toLocaleString('vi-VN')}`,
-							content: base64Content,
-							sha: shaRef.current, // Gửi SHA nếu có (update)
-						};
-						
-						const response = await fetch(GITHUB_API_URL, {
-							method: shaRef.current ? 'PUT' : 'PUT', // Dùng PUT cho cả tạo mới và update
-							headers: {
-								'Authorization': `token ${GITHUB_TOKEN}`,
-								'Content-Type': 'application/json'
-							},
-							body: JSON.stringify(payload)
-						});
-
-						if (!response.ok) {
-							throw new Error(`GitHub PUT/POST failed with status: ${response.status}`);
-						}
-
-						console.log("Lịch sử trò chơi đã được lưu thành công lên GitHub!");
-						// ĐẶT CỜ BÁO HIỆU LƯU THÀNH CÔNG VÀO SESSION STORAGE
-						sessionStorage.setItem(currentSessionKey, 'true');
-						
-						// Cập nhật SHA mới
-						const result = await response.json();
-						shaRef.current = result.content.sha;
-
-					} catch (error) {
-						console.error("LỖI CẤP CAO khi lưu lịch sử lên GitHub:", error);
-						// Không đặt cờ nếu lưu thất bại
-					}
-				// *** CẬP NHẬT: Thêm startTime vào dependency array ***
-				}, [getAndSetSha, currentSessionKey, startTime]); 
-				
-				// Kích hoạt việc lưu khi chuyển sang Game Over
-				useEffect(() => {
-					if (gameState === 'game_over' && history.length > 0) {
-						// Chỉ lưu khi có ít nhất 1 ván đã chơi
-						saveHistoryToGithub(sortedScores);
-					}
-				}, [gameState, sortedScores, saveHistoryToGithub, history.length]); 
-			};
-
-			// --- 2. Component Con: Modal (Thay thế alert/confirm) ---
-
-			const Modal = ({ title, content, isOpen, onClose, onConfirm, confirmText = "Xác nhận", cancelText = "Hủy bỏ", showCancel = true }) => {
-				if (!isOpen) return null;
-
-				return (
-					<div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50 animate-fade-in">
-						<div className="bg-white rounded-xl shadow-3xl w-full max-w-sm animate-bounce-in">
-							<header className="px-4 py-3 bg-primary rounded-t-xl">
-								<h3 className="text-xl font-bold text-white">{title}</h3>
-							</header>
-							<div className="p-4">
-								{content}
-							</div>
-							{/* Căn giữa nút xác nhận */}
-							<footer className="flex justify-center space-x-3 p-4 border-t border-gray-100"> 
-								{showCancel && (
-									<button
-										onClick={onClose}
-										className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-200 rounded-lg transition"
-									>
-										{cancelText}
-									</button>
-								)}
-								<button
-									onClick={onConfirm}
-									className="px-4 py-2 text-sm font-semibold text-white bg-secondary rounded-lg transition"
-								>
-									{confirmText}
-								</button>
-							</footer>
-						</div>
-					</div>
-				);
-			};
-
-			// --- 3. Component Chính: App ---
-
-			function App() {
-				// State chính của ứng dụng
-				const [gameState, setGameState] = useLocalStorageState('gameState', 'setup'); 
-				const [players, setPlayers] = useLocalStorageState('players', []);
-				const [maxRounds, setMaxRounds] = useLocalStorageState('maxRounds', 15); 
-				const [history, setHistory] = useLocalStorageState('history', []);
-				
-				// *** THÊM MỚI: State cho startTime ***
-				const [startTime, setStartTime] = useLocalStorageState('startTime', null); 
-				
-				const [showHistory, setShowHistory] = useState(false);
-				const [showGameOverHistory, setShowGameOverHistory] = useState(false);
-				const [isScoringMode, setIsScoringMode] = useState(false);
-				const [newPlayerName, setNewPlayerName] = useState('');
-				const [roundScoreInputs, setRoundScoreInputs] = useLocalStorageState('roundScoreInputs', {});
-				const [modal, setModal] = useState({ isOpen: false, type: null, data: null });
-				const [newMaxRoundsInput, setNewMaxRoundsInput] = useState(15);
-				
-				const { addToQueue, addMultipleSequencesToQueue } = useAudioQueue(); 
-
-				// Tính toán tổng điểm (Giữ nguyên thứ tự người chơi khi họ được thêm vào)
-				const unsortedPlayerScores = useMemo(() => {
-					return players.map(p => {
-						const totalScore = history.reduce((sum, round) => sum + (round.scores[p.id] || 0), 0);
-						return { ...p, totalScore: Number(totalScore) };
-					}); 
-				}, [players, history]);
-				
-				// Tính toán Bảng xếp hạng để truyền vào hook GitHub
-				const sortedScores = useMemo(() => {
-					return [...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore);
-				}, [unsortedPlayerScores]);
-
-				// *** CẬP NHẬT: Kích hoạt Hook lưu lịch sử GitHub (Thêm 'startTime') ***
-				useGitHubHistory(sortedScores, gameState, history, startTime); 
-
-
-				// --- Logic Audio: Phát âm thanh đọc điểm VÁN MỚI ---
-				const playScoreAudio = (currentRoundScores) => {
-					
-					// 1. Tạo mảng chi tiết điểm, có điểm ván vừa ghi
-					const scoreDetails = players.map(p => ({
-						...p, // Đã bao gồm audioFile
-						score: Number(currentRoundScores[p.id] || 0), 
-					}));
-					
-					// 2. Sắp xếp theo điểm ván vừa ghi (cao -> thấp)
-					scoreDetails.sort((a, b) => b.score - a.score);
-
-					let allAudioSequences = [];
-					
-					scoreDetails.forEach(detail => {
-						// LẤY FILE AUDIO ĐÃ GÁN (normalized name hoặc member1-4)
-						const nameFile = detail.audioFile; 
-						const scoreFile = detail.score.toString(); 
-
-						if (detail.score < -10 || detail.score > 10) {
-							console.warn(`[CẢNH BÁO AUDIO VÁN] Điểm ${detail.score} của ${detail.name} nằm ngoài phạm vi đọc (-10 đến 10) thông thường. Hãy đảm bảo có file âm thanh "${scoreFile}.mp3".`);
-						}
-
-						// Chuỗi phát mới: [Tên người chơi audioFile], [Điểm VÁN VỪA GHI]
-						const audioSequence = [nameFile, scoreFile];
-						
-						allAudioSequences.push(audioSequence);
-					});
-					
-					addMultipleSequencesToQueue(allAudioSequences);
-				};
-
-				// Logic Audio 6a. Phát thông báo ván còn lại
-				const playLowRoundAudio = useCallback((roundsLeft) => {
-					let audioFile = null;
-					if (roundsLeft === 3) {
-						audioFile = '3left';
-					} else if (roundsLeft === 2) {
-						audioFile = '2left';
-					} else if (roundsLeft === 1) {
-						audioFile = '1left';
-					}
-					if (audioFile) {
-						addToQueue([audioFile]);
-					}
-				}, [addToQueue]);
-
-
-				// --- 5. Lịch sử điểm và Tổng kết ván (useEffect chính) ---
-				useEffect(() => {
-					const roundsLimit = parseInt(maxRounds);
-					const currentRound = history.length;
-					
-					if (gameState !== 'playing' || roundsLimit <= 0) return;
-
-					const roundsLeft = roundsLimit - currentRound;
-					let delayTimer = null;
-
-					// 1. Logic Game Over - KHI ĐẠT GIỚI HẠN VÁN
-					if (currentRound >= roundsLimit) {
-						setGameState('game_over');
-						addToQueue(['gameover']); 
-						return;
-					}
-
-					// 2. Logic Low Rounds Notification
-					if (currentRound > 0) { 
-						delayTimer = setTimeout(() => {
-							playLowRoundAudio(roundsLeft);
-						}, 5000); 
-					}
-					
-					return () => {
-						if (delayTimer) {
-							clearTimeout(delayTimer);
-						}
-					};
-				}, [history, maxRounds, gameState, players, addToQueue, playLowRoundAudio, unsortedPlayerScores]); 
-				
-				useEffect(() => {
-					 if (players.length > 0 && gameState === 'playing' && Object.keys(roundScoreInputs).length === 0) {
-						const initialInputs = players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
-						setRoundScoreInputs(initialInputs);
-					}
-				}, [players, gameState, roundScoreInputs]);
-
-
-				// --- 7. Hoàn tác (Undo) ---
-				const confirmUndo = () => {
-					setHistory(prev => prev.slice(0, -1)); 
-					setGameState('playing');
-					setIsScoringMode(false);
-					setRoundScoreInputs({});
-					setModal({ isOpen: false, type: null, data: null });
-					addToQueue(['hoantac']); 
-					sessionStorage.removeItem(`game_saved_${history.length}`); 
-				};
-				
-				const handleUndo = () => {
-					if (history.length === 0 || isScoringMode) return;
-					setModal({
-						isOpen: true,
-						type: 'confirm_action',
-						data: { action: 'Hoàn Tác Ván Cuối', onConfirm: confirmUndo }
-					});
-				};
-
-				// --- 8. Reset Game ---
-				const confirmResetGame = () => {
-					setGameState('setup');
-					setPlayers([]);
-					setHistory([]);
-					setIsScoringMode(false);
-					setRoundScoreInputs({});
-					setMaxRounds(15); 
-					
-					// *** THÊM MỚI: Reset startTime ***
-					setStartTime(null); 
-					
-					localStorage.clear(); 
-					Object.keys(sessionStorage).forEach(key => {
-						if (key.startsWith('game_saved_')) {
-							sessionStorage.removeItem(key);
-						}
-					});
-					setModal({ isOpen: false, type: null, data: null });
-				};
-				
-				const handleResetGame = () => {
-					if (isScoringMode) return;
-					setModal({
-						isOpen: true,
-						type: 'confirm_action',
-						data: { action: 'Reset Game', onConfirm: confirmResetGame }
-					});
-				};
-				
-				// --- 9. Kết Thúc Game
-				 const handleEndGameConfirm = () => {
-					if (isScoringMode) return;
-					setModal({
-						isOpen: true,
-						type: 'confirm_action',
-						data: { 
-							action: 'Kết Thúc Game', 
-							onConfirm: () => {
-								setGameState('game_over');
-								addToQueue(['gameover']); 
-								setModal({ isOpen: false, type: null, data: null });
-							}
-						}
-					});
-				};
-
-
-				// --- Xử lý Stage: Setup (Giai đoạn I) ---
-				
-				const handleAddPresetPlayer = (nameToAdd) => {
-					if (!nameToAdd) return; 
-
-					if (players.length >= MAX_PLAYERS) {
-						setModal({
-							isOpen: true,
-							type: 'info',
-							data: { title: 'Thông báo', message: `Số lượng người chơi tối đa là ${MAX_PLAYERS}.` }
-						});
-						return;
-					}
-
-					const trimmedName = nameToAdd.trim();
-					if (players.some(p => p.name.toLowerCase() === trimmedName.toLowerCase())) {
-						setModal({
-							isOpen: true,
-							type: 'info',
-							data: { title: 'Thông báo', message: `Người chơi '${trimmedName}' đã tồn tại.` }
-						});
-						return;
-					}
-
-					const newPlayer = createPlayerObject(trimmedName, false, players);
-					setPlayers([...players, newPlayer]);
-				};
-
-				const handleRemovePlayer = (playerName) => {
-					const existingPlayer = players.find(p => p.name === playerName); 
-					if (existingPlayer) {
-						const newPlayers = players.filter(p => p.id !== existingPlayer.id);
-						setPlayers(newPlayers);
-					}
-				};
-				
-				const handleTogglePresetPlayer = (name) => {
-					if (players.some(p => p.name === name)) {
-						handleRemovePlayer(name);
-					} else {
-						handleAddPresetPlayer(name);
-					}
-				};
-
-
-				const handleAddNewPlayer = () => {
-					const trimmedName = newPlayerName.trim();
-					if (!trimmedName) return;
-
-					if (players.length >= MAX_PLAYERS) {
-						 setModal({
-							isOpen: true,
-							type: 'info',
-							data: { title: 'Thông báo', message: `Số lượng người chơi tối đa là ${MAX_PLAYERS}.` }
-						});
-						return;
-					}
-					
-					if (players.some(p => p.name.toLowerCase() === trimmedName.toLowerCase()) || PRESET_PLAYERS.some(p => p.toLowerCase() === trimmedName.toLowerCase())) {
-						 setModal({
-							isOpen: true,
-							type: 'info',
-							data: { title: 'Thông báo', message: `Người chơi '${trimmedName}' đã tồn tại.` }
-						});
-						return;
-					}
-					
-					const newPlayer = createPlayerObject(trimmedName, true, players);
-					setPlayers([...players, newPlayer]);
-					setNewPlayerName('');
-				};
-				
-				const handleStartGame = () => {
-					if (players.length < 2) {
-						setModal({
-							isOpen: true,
-							type: 'info',
-							data: { title: 'Lỗi', message: 'Cần tối thiểu 2 người chơi để bắt đầu trò chơi.' }
-						});
-						return;
-					}
-					
-					const finalMaxRounds = parseInt(maxRounds);
-					if (isNaN(finalMaxRounds) || finalMaxRounds < 1) {
-						setModal({
-							isOpen: true,
-							type: 'info',
-							data: { title: 'Lỗi', message: 'Số ván chơi phải là một số nguyên dương hợp lệ (tối thiểu 1).' }
-						});
-						setMaxRounds(15); 
-						return;
-					}
-
-					setMaxRounds(finalMaxRounds); 
-					setGameState('playing');
-					const initialInputs = players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
-					setRoundScoreInputs(initialInputs);
-				};
-
-				// --- Xử lý Stage: Playing (Giai đoạn II) ---
-
-				const handleNewScoreClick = () => {
-					if (!isScoringMode) {
-						addToQueue(['vanmoi']); 
-						setIsScoringMode(true);
-						const initialInputs = unsortedPlayerScores.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
-						setRoundScoreInputs(initialInputs);
-					} else {
-						handleConfirmScore();
-					}
-				};
-
-				const handleScoreChange = (playerId, value) => {
-					const numValue = value === '' ? '' : parseInt(value);
-					setRoundScoreInputs(prev => ({ ...prev, [playerId]: isNaN(numValue) ? value : numValue }));
-				};
-
-				const handleConfirmScore = () => {
-					const newRoundScores = {};
-
-					unsortedPlayerScores.forEach(p => {
-						const score = roundScoreInputs[p.id];
-						if (score === '' || score === null || isNaN(score)) {
-							newRoundScores[p.id] = 0; 
-						} else {
-							newRoundScores[p.id] = parseInt(score); 
-						}
-					});
-					
-					// *** THÊM MỚI: Ghi startTime nếu là ván 1 ***
-					if (history.length === 0) {
-						setStartTime(new Date().toISOString());
-					}
-					// *** KẾT THÚC THÊM MỚI ***
-
-					const newHistoryEntry = {
-						round: history.length + 1,
-						scores: newRoundScores,
-						timestamp: new Date().toISOString()
-					};
-					setHistory(prev => [...prev, newHistoryEntry]);
-
-					playScoreAudio(newRoundScores);
-
-					setIsScoringMode(false);
-					setRoundScoreInputs({});
-				};
-				
-				const handleSetRoundsClick = () => {
-					if (isScoringMode) return;
-					 setModal({
-						isOpen: true,
-						type: 'reset_rounds',
-						data: { currentMax: parseInt(maxRounds) || 15, playedRounds: history.length }
-					});
-					setNewMaxRoundsInput(parseInt(maxRounds) || 15);
-				};
-
-				const confirmResetRounds = () => {
-					const newMax = parseInt(newMaxRoundsInput);
-					if (isNaN(newMax) || newMax <= 0) {
-						setModal({
-							isOpen: true,
-							type: 'info',
-							data: { title: 'Lỗi', message: 'Số ván mới phải là một số nguyên dương hợp lệ.' }
-						});
-						return;
-					}
-					if (newMax < history.length) {
-						setModal({
-							isOpen: true,
-							type: 'info',
-							data: { title: 'Lỗi', message: `Số ván mới (${newMax}) không được nhỏ hơn số ván đã chơi (${history.length}).` }
-						});
-						return;
-					}
-					
-					setMaxRounds(newMax);
-					setModal({ isOpen: false, type: null, data: null });
-					addToQueue(['dasetsovan']); 
-					
-					if (history.length >= newMax) {
-						setGameState('game_over');
-						addToQueue(['gameover']); 
-					}
-				};
-
-				const renderModalContent = () => {
-					switch (modal.type) {
-						case 'info':
-							return <div><p className="text-gray-700">{modal.data.message}</p></div>;
-						case 'confirm_action': 
-							return <div><p className="text-gray-700 font-medium">Xác nhận **{modal.data.action}**?</p></div>;
-						case 'reset_rounds':
-							return (
-								<div>
-									<p className="text-gray-700 mb-4">
-										Ván đã chơi: <span className="font-bold text-primary">{modal.data.playedRounds}</span>.
-										Số ván tối thiểu phải là <span className="font-bold text-primary">{modal.data.playedRounds}</span>.
-									</p>
-									<label className="block text-sm font-medium text-gray-700">Nhập số ván mới:</label>
-									<input
-										type="number"
-										min={modal.data.playedRounds}
-										value={newMaxRoundsInput}
-										onChange={(e) => setNewMaxRoundsInput(e.target.value)}
-										className="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-primary focus:border-primary"
-									/>
-								</div>
-							);
-						default:
-							return null;
-					}
-				};
-
-				// --- Render các Stage ---
-				
-				// Stage 0: Setup
-				const renderSetup = () => {
-					
-					// THAY ĐỔI: Tạo danh sách hiển thị bao gồm cả người chơi tùy chỉnh
-					const customPlayerNames = players
-						.map(p => p.name)
-						.filter(name => !PRESET_PLAYERS.includes(name));
-					
-					const displayList = [...PRESET_PLAYERS, ...customPlayerNames];
-
-					// Kiểm tra xem số ván hiện tại có phải là giá trị tùy chỉnh không
-					const isCustomRound = !PRESET_ROUNDS.includes(parseInt(maxRounds));
-
-					return (
-						<div className="p-4 sm:p-6 pb-2">
-							<h2 className="text-xl font-bold text-primary mb-4 text-center">⚙️ Cấu Hình Trò Chơi</h2>
-
-							{/* Chọn Số Ván */}
-							<div className="mb-4 p-4 bg-white rounded-xl shadow-lg border border-indigo-100">
-								<h3 className="text-md font-semibold mb-3 text-gray-700 flex items-center">
-									1. Chọn Số Ván Chơi 
-									<span className="ml-2 px-3 py-1 text-xs font-bold text-primary bg-indigo-100 rounded-full">
-										Hiện tại: {parseInt(maxRounds) || 15}
-									</span>
-								</h3>
-								
-								{/* ĐIỀU CHỈNH: Đưa Input vào cùng hàng với các nút */}
-								<div className="flex flex-wrap gap-2 items-center"> 
-									{PRESET_ROUNDS.map(r => (
-										<button
-											key={r}
-											onClick={() => setMaxRounds(r)}
-											className={`px-3 py-1 text-sm font-medium rounded-full transition duration-200 shadow-md ${parseInt(maxRounds) === r ? 'bg-primary text-white font-bold' : 'bg-gray-200 text-gray-700'} flex-shrink-0`}
-										>
-											{r} Ván
-										</button>
-									))}
-									
-									{/* Custom Input Button/Box tích hợp vào flex container */}
-									{/* Tối ưu hóa: Bỏ flex-grow, giảm min-w để vừa hơn trên mobile */}
-									<div className="min-w-[70px] flex-1"> 
-										<input
-											type="number"
-											min="1"
-											value={maxRounds} 
-											onChange={(e) => setMaxRounds(e.target.value)} 
-											onBlur={(e) => {
-												const val = parseInt(e.target.value);
-												if (isNaN(val) || val < 1) {
-													setMaxRounds(1);
-												} else {
-													setMaxRounds(val);
-												}
-											}}
-											// Styling mới để hòa hợp và nhấn mạnh khi là tùy chỉnh
-											className={`w-full px-3 py-1 text-sm font-medium border-2 rounded-full text-center shadow-md 
-														${isCustomRound ? 'bg-indigo-100 border-primary text-primary font-bold' : 'bg-gray-200 border-gray-300 text-gray-700'} 
-														focus:ring-secondary focus:border-secondary transition`}
-											placeholder="Ván..."
-										/>
-									</div>
-								</div>
-							</div>
-							
-							{/* Chọn Người Chơi */}
-							<div className="mb-4 p-4 bg-white rounded-xl shadow-lg border border-emerald-100">
-								<h3 className="text-md font-semibold mb-3 text-gray-700">2. Thêm Người Chơi ({players.length}/{MAX_PLAYERS})</h3>
-								
-								{/* Lưới 2 cột cho người chơi */}
-								<div className="grid grid-cols-2 gap-2 mb-4">
-									{displayList.map(name => {
-										const isSelected = players.some(p => p.name === name);
-										const isDisabled = !isSelected && players.length >= MAX_PLAYERS;
-										
-										return (
-											<button
-												key={name}
-												onClick={() => handleTogglePresetPlayer(name)}
-												disabled={isDisabled}
-												className={`p-2 rounded-lg border-2 transition-all duration-200 ease-in-out 
-															flex items-center justify-center relative text-sm font-medium text-center
-															${isSelected 
-																? 'bg-secondary border-secondary/50 text-white font-bold shadow-lg'
-																: 'bg-secondary/10 border-secondary/30 text-gray-700'}
-															${isDisabled ? 'opacity-50 cursor-not-allowed bg-gray-100 border-gray-200' : ''}
-														`}
-											>
-												{isSelected && (
-													<span className="absolute -top-2 -right-2 bg-white text-secondary rounded-full w-5 h-5 flex items-center justify-center text-sm font-bold border border-secondary/50">✓</span>
-												)}
-												{name}
-											</button>
-										);
-									})}
-								</div>
-
-								{/* Thêm người chơi mới (Tùy chỉnh) */}
-								<div className="flex space-x-2 mt-3 pt-3 border-t border-gray-100">
-									<input
-										type="text"
-										value={newPlayerName}
-										onChange={(e) => setNewPlayerName(e.target.value)}
-										placeholder="Tên người chơi tùy chỉnh..."
-										className="flex-grow p-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-primary focus:border-primary disabled:bg-gray-100"
-										disabled={players.length >= MAX_PLAYERS}
-									/>
-									<button
-										onClick={handleAddNewPlayer}
-										className="p-2 bg-primary text-white rounded-lg font-semibold text-sm transition disabled:bg-gray-400"
-										disabled={!newPlayerName.trim() || players.length >= MAX_PLAYERS}
-									>
-										Thêm
-									</button>
-								</div>
-								
-							</div>
-
-							{/* Nút Bắt đầu */}
-							<button
-								onClick={handleStartGame}
-								disabled={players.length < 2}
-								className="w-full py-4 bg-secondary text-white font-extrabold text-lg rounded-xl shadow-2xl transition duration-300 transform disabled:bg-gray-400 mt-6"
-							>
-								{players.length < 2 ? 'Cần 2 người chơi để bắt đầu' : `BẮT ĐẦU TRÒ CHƠI (${parseInt(maxRounds) || 15} VÁN)`}
-							</button>
-						</div>
-					);
-				};
-
-
-				// Stage 1: Playing
-				const renderPlaying = () => (
-					<div className="p-4"> 
-						<h2 className="text-2xl font-extrabold text-primary mb-3 text-center"> 
-							VÁN <span className="text-secondary">{history.length + 1}</span> / {parseInt(maxRounds) || 15}
-						</h2>
-						
-						{/* Nút Ghi/Xác nhận điểm */}
-						 <button
-							onClick={handleNewScoreClick}
-							className={`w-full py-3 font-extrabold text-white rounded-xl shadow-xl transition duration-300 transform mb-4 
-								${isScoringMode ? 'bg-secondary animate-pulse-strong text-lg' : 'bg-primary text-base'}`} 
-							disabled={unsortedPlayerScores.length === 0}
-						>
-							{isScoringMode ? `✅ XÁC NHẬN GHI ĐIỂM VÁN ${history.length + 1}` : 'GHI ĐIỂM VÁN MỚI'}
-						</button>
-						
-						{/* Vùng Hiện Thị Tên Người Chơi và Ghi Điểm */}
-						<div className={`p-4 rounded-xl shadow-xl mb-4 transition duration-500 
-										 ${isScoringMode ? 'bg-indigo-50 border-4 border-indigo-200 animate-fade-in' : 'bg-white border-2 border-gray-200'}`}> 
-							<h3 className="text-xl font-bold text-gray-700 mb-3 border-b pb-2"> 
-								{isScoringMode ? '✏️ Nhập Điểm Ván Mới' : '👥 Người Chơi'}
-							</h3>
-							<div className="space-y-3"> 
-								{unsortedPlayerScores.map(p => ( 
-									<div key={p.id} className="flex justify-between items-center py-1 bg-white p-3 rounded-lg shadow-md border border-gray-100">
-										{/* Tên người chơi */}
-										<div className={`flex items-center ${isScoringMode ? 'w-1/2' : 'flex-grow'}`}>
-											<span className={`text-lg font-bold ${isScoringMode ? 'text-gray-800' : 'text-primary'} truncate`}>
-												{p.name}
-											</span>
-										</div>
-										
-										{/* Scoring Input/Controls */}
-										{isScoringMode && (
-											<div className="grid grid-cols-3 w-1/2 gap-1.5">
-												{/* Nút Giảm */}
-												<button 
-													onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) - 1)}
-													className="p-2 bg-danger text-white rounded-xl font-extrabold text-xl transition duration-150 shadow-md" 
-												>
-													-
-												</button>
-												{/* Input Điểm */}
-												<input
-													type="number"
-													value={roundScoreInputs[p.id] === 0 && roundScoreInputs[p.id] !== '' ? '0' : roundScoreInputs[p.id]}
-													onChange={(e) => handleScoreChange(p.id, e.target.value)}
-													className="p-1 border-2 border-secondary rounded-xl text-center font-mono text-xl font-bold focus:ring-secondary focus:border-secondary"
-													placeholder="0"
-												/>
-												{/* Nút Tăng */}
-												<button 
-													onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) + 1)}
-													className="p-2 bg-secondary text-white rounded-xl font-extrabold text-xl transition duration-150 shadow-md" 
-												>
-													+
-												</button>
-											</div>
-										)}
-									</div>
-								))}
-							</div>
-						</div>
-						
-						
-						{/* Các nút chức năng (grid 2x2) */}
-						<div className="grid grid-cols-2 gap-2 mb-4"> 
-							{/* Hàng 1 */}
-							<button
-								onClick={handleSetRoundsClick} 
-								disabled={isScoringMode}
-								className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm shadow-md"
-							>
-								🔁 Set Ván
-							</button>
-							 <button
-								onClick={handleUndo} 
-								disabled={history.length === 0 || isScoringMode}
-								className="w-full py-3 bg-warning text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm shadow-md"
-							>
-								↩️ Hoàn Tác
-							</button>
-							
-							{/* Hàng 2 */}
-							<button
-								onClick={handleResetGame} 
-								disabled={isScoringMode}
-								className="w-full py-3 bg-danger text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm shadow-md"
-							>
-								🔄 Reset
-							</button>
-							<button
-								onClick={handleEndGameConfirm} 
-								disabled={isScoringMode}
-								className="w-full py-3 bg-gray-600 text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm shadow-md"
-							>
-								🛑 Kết Thúc
-							</button>
-						</div>
-						
-						
-						{/* Lịch sử điểm */}
-						<div className="bg-white p-4 rounded-xl shadow-xl border border-gray-200"> 
-							<button 
-								onClick={() => setShowHistory(prev => !prev)}
-								className="w-full text-left text-lg font-bold text-gray-700 p-1 rounded-lg transition flex justify-between items-center"
-							>
-								Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showHistory ? '▲' : '▼'}
-							</button>
-							{showHistory && (
-								<div className="overflow-x-auto mt-3 max-h-60 border rounded-lg"> 
-									<table className="min-w-full divide-y divide-gray-200">
-										<thead className="bg-gray-100 sticky left-0 z-10">
-											<tr>
-												<th className="px-3 py-2 text-left text-xs font-bold text-gray-600 uppercase sticky left-0 bg-gray-100 shadow-sm min-w-[100px]">Người chơi</th>
-												{[...Array(history.length)].map((_, index) => (
-													<th key={index} className="px-3 py-2 text-center text-xs font-bold text-gray-600 uppercase min-w-[50px]">Ván {history.length - index}</th>
-												))}
-											</tr>
-										</thead>
-										<tbody className="bg-white divide-y divide-gray-200">
-											{players.map(p => (
-												<tr key={p.id}>
-													<td 
-														className="px-3 py-2 whitespace-nowrap text-sm font-semibold text-gray-900 sticky left-0 bg-white shadow-sm truncate" 
-														title={p.name}
-													>
-														{p.name}
-													</td>
-													{[...history].reverse().map(entry => {
-														const score = entry.scores[p.id] || 0;
-														const colorClass = score > 0 ? 'text-secondary font-extrabold' : (score < 0 ? 'text-danger font-semibold' : 'text-gray-500');
-														return (
-															<td key={entry.round} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass} min-w-[50px] font-mono`}>
-																{score > 0 ? `+${score}` : score}
-															</td>
-														);
-													})}
-												</tr>
-											))}
-										</tbody>
-									</table>
-								</div>
-							)}
-						</div>
-					</div>
-				);
-
-				// Stage 2: Game Over
-				const renderGameOver = () => {
-					const playerCount = sortedScores.length;
-					
-					let loserScoreThreshold = null;
-					if (playerCount >= 2) {
-						loserScoreThreshold = sortedScores[playerCount - 2].totalScore;
-					}
-
-					const isLoser = (p) => {
-						if (loserScoreThreshold === null) return false;
-						return p.totalScore <= loserScoreThreshold;
-					};
-
-					return (
-						<div className="p-4 text-center animate-bounce-in">
-							<h2 className="text-2xl font-extrabold text-danger mb-1">🎉 TRÒ CHƠI KẾT THÚC! 🎉</h2>
-							<p className="text-base font-medium text-gray-700 mb-3">Tổng số ván đã chơi: <span className="text-primary font-bold">{history.length}</span></p>
-
-							{/* Bảng Xếp Hạng */}
-							<div className="bg-white p-4 rounded-xl shadow-2xl mb-4 border border-indigo-200">
-								<h3 className="text-xl font-extrabold text-primary mb-3 border-b pb-2">🏆 BẢNG XẾP HẠNG</h3>
-								{sortedScores.map((p, index) => {
-									const isCurrentLoser = isLoser(p);
-									
-									const itemClassName = `flex justify-between items-center py-2 px-3 my-2 rounded-xl transition transform duration-300 shadow-md 
-														   ${isCurrentLoser ? 'bg-red-100 border-2 border-danger scale-[1.03]' : 'bg-gray-50 border-2 border-secondary/50'}`;
-									
-									return (
-										<div 
-											key={p.id} 
-											className={itemClassName}
-										>
-											<div className="flex items-center space-x-2">
-												<span className={`text-xl font-extrabold w-6 text-center 
-																  ${index === 0 ? 'text-yellow-500' : index === 1 ? 'text-gray-400' : index === 2 ? 'text-amber-700' : 'text-primary'}`}>
-													#{index + 1}
-												</span>
-												<span className={`text-lg font-bold ${isCurrentLoser ? 'text-danger' : 'text-gray-700'}`}>
-													{p.name}
-												</span>
-											</div>
-											<span className={`text-2xl font-extrabold ${p.totalScore >= 0 ? 'text-secondary' : 'text-danger'} font-mono`}>
-												{p.totalScore}
-											</span>
-										</div>
-									);
-								})}
-							</div>
-
-							{/* Lịch sử điểm tại màn hình Game Over */}
-							<div className="bg-white p-3 rounded-xl shadow-lg mb-4 border border-gray-200">
-								<button 
-									onClick={() => setShowGameOverHistory(prev => !prev)}
-									className="w-full text-left text-lg font-bold text-gray-700 p-1 rounded-lg transition flex justify-between items-center"
-								>
-									Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showGameOverHistory ? '▲' : '▼'}
-								</button>
-								{showGameOverHistory && (
-									<div className="overflow-x-auto mt-2 max-h-48 border rounded-lg">
-										<table className="min-w-full divide-y divide-gray-200">
-											<thead className="bg-gray-100 sticky left-0 z-10">
-												<tr>
-													<th className="px-3 py-2 text-left text-xs font-bold text-gray-600 uppercase sticky left-0 bg-gray-100 shadow-sm min-w-[100px]">Người chơi</th>
-													{[...Array(history.length)].map((_, index) => (
-														<th key={index} className="px-3 py-2 text-center text-xs font-bold text-gray-600 uppercase min-w-[50px]">Ván {history.length - index}</th>
-													))}
-												</tr>
-											</thead>
-											<tbody className="bg-white divide-y divide-gray-200">
-												{players.map(p => (
-													<tr key={p.id}>
-														<td 
-															className="px-3 py-2 whitespace-nowrap text-sm font-semibold text-gray-900 sticky left-0 bg-white shadow-sm truncate" 
-															title={p.name}
-														>
-															{p.name}
-														</td>
-														{[...history].reverse().map(entry => {
-															const score = entry.scores[p.id] || 0;
-															const colorClass = score > 0 ? 'text-secondary font-extrabold' : (score < 0 ? 'text-danger font-semibold' : 'text-gray-500');
-															return (
-																<td key={entry.round} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass} min-w-[50px] font-mono`}>
-																	{score > 0 ? `+${score}` : score}
-																</td>
-															);
-														})}
-													</tr>
-												))}
-											</tbody>
-										</table>
-									</div>
-								)}
-							</div>
-
-							{/* Nút Chơi Lại */}
-							<button
-								onClick={confirmResetGame} 
-								className="w-full py-3 bg-secondary text-white font-extrabold text-xl rounded-xl shadow-xl transition transform"
-							>
-								CHƠI LẠI
-							</button>
-						</div>
-					);
-				};
-				
-				// --- Logic Render Chính ---
-
-				return (
-					<div className="min-h-screen bg-gray-50 flex justify-center">
-						<div className="w-full max-w-xl mx-auto bg-white shadow-3xl rounded-2xl overflow-hidden my-0 sm:my-6">
-							<header className="bg-primary text-white p-4 text-center">
-								{/* Thay đổi tiêu đề chính */}
-								<h1 className="text-3xl font-extrabold">TIẾN LÊN MIỀN TRUNG</h1> 
-							</header>
-							
-							{gameState === 'setup' && renderSetup()}
-							{gameState === 'playing' && renderPlaying()}
-							{gameState === 'game_over' && renderGameOver()}
-						</div>
-
-						{/* Modal Popup */}
-						<Modal
-							title={modal.type === 'info' ? 'Thông báo' : 
-								   modal.type === 'confirm_action' ? 'Xác nhận' : 'Set lại Số Ván Chơi'}
-							isOpen={modal.isOpen}
-							onClose={() => setModal({ isOpen: false, type: null, data: null })}
-							onConfirm={modal.type === 'confirm_action' ? modal.data.onConfirm : 
-									   modal.type === 'reset_rounds' ? confirmResetRounds :
-									   () => setModal({ isOpen: false, type: null, data: null }) 
-									  }
-							confirmText={modal.type === 'info' ? 'Đóng' : 'Xác nhận'}
-							showCancel={modal.type !== 'info'}
-							content={renderModalContent()}
-						/>
-					</div>
-				);
-			}
-
-			// Render ứng dụng React vào DOM
-			const root = ReactDOM.createRoot(document.getElementById('root'));
-			root.render(<App />);
-		</script>
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+        const useLocalStorageState = ReactUseLocalStorageState.useLocalStorageState; // Lấy hook từ thư viện
+        
+        const MAX_PLAYERS = 4;
+        
+        // Cấu hình đường dẫn cho âm thanh cục bộ
+        const AUDIO_BASE_PATH = 'audio/';
+        
+        // Audio dự phòng cho người chơi tự thêm từ bàn phím
+        const FALLBACK_AUDIOS = ['member1', 'member2', 'member3', 'member4']; 
+
+        // Danh sách tên người chơi có sẵn
+        const PRESET_PLAYERS = [
+            "Bình Đặng", 
+            "Dũng Hoàng", 
+            "Dũng Nguyễn", 
+            "Định Ngô", 
+            "Đông Lê", 
+            "Khánh Đỗ", 
+            "Minh Anh", 
+            "Nhân Trần", 
+            "Quý Huỳnh", 
+            "Trúc Trần"
+        ];
+        const PRESET_ROUNDS = [15, 21, 31];
+        
+        // --- CẤU HÌNH GITHUB API ---
+        const GITHUB_TOKEN_PART1 = 'github_pat_11AHU2I4Q0eTQynszWYAnj_';
+        const GITHUB_TOKEN_PART2 = 'g3icOcB6W3He3EFtkB3rEuvAIst0GQQf50IaXXPDllERWI7ZWWJF0pB4QeI'; 
+        const GITHUB_TOKEN = GITHUB_TOKEN_PART1 + GITHUB_TOKEN_PART2; 
+        const REPO_OWNER = 'duphan97';
+        const REPO_NAME = '13cay';
+        const DATA_FILE_PATH = 'data/session_history.json'; 
+        const GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${DATA_FILE_PATH}`;
+        // --- HẾT CẤU HÌNH GITHUB API ---
+
+
+        // --- 1. Custom Hooks & Utilities ---
+
+        // Hàm chuẩn hóa tên người chơi thành tên file không dấu, không khoảng trắng, chữ thường
+        const normalizeName = (name) => {
+            return name
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u00c0-\u036f]/g, "") // bỏ dấu
+                .replace(/đ/g, 'd')             // đổi đ -> d
+                .replace(/\s+/g, '');           // bỏ khoảng trắng
+        };
+
+        // Hàm tạo ID duy nhất
+        const generateId = () => Math.random().toString(36).substring(2, 9);
+        
+        // HÀM TẠO ĐỐI TƯỢNG NGƯỜI CHƠI HOÀN CHỈNH (với audioFile)
+        const createPlayerObject = (name, isCustom = false, existingPlayers = []) => {
+            const normalizedName = normalizeName(name);
+            let audioFileName = normalizedName;
+            
+            // ID dựa trên tên chuẩn hóa + ID ngẫu nhiên để đảm bảo tính duy nhất
+            const id = normalizedName + generateId(); 
+
+            if (isCustom) {
+                // Lọc ra các file dự phòng đã được sử dụng
+                const usedFallbacks = existingPlayers
+                    .map(p => p.audioFile)
+                    .filter(audio => FALLBACK_AUDIOS.includes(audio));
+                
+                // Tìm file dự phòng đầu tiên chưa được sử dụng
+                const availableFallback = FALLBACK_AUDIOS.find(f => !usedFallbacks.includes(f));
+
+                if (availableFallback) {
+                    audioFileName = availableFallback;
+                } else {
+                    // Nếu quá 4 người chơi tự thêm, quay lại dùng tên chuẩn hóa (cần file riêng)
+                    audioFileName = normalizedName;
+                    console.warn("Đã sử dụng hết file audio dự phòng (member1-4). Người chơi mới sẽ dùng tên chuẩn hóa, cần file audio tương ứng.");
+                }
+            } else {
+                // Người chơi trong danh sách có sẵn, sử dụng tên chuẩn hóa
+                audioFileName = normalizedName;
+            }
+            
+            return { id, name: name.trim(), audioFile: audioFileName };
+        };
+
+
+        // Custom Hook: Xử lý Audio theo hàng đợi
+        const useAudioQueue = () => {
+            const audioQueue = useRef([]); 
+            const isPlaying = useRef(false); 
+
+            const preloadAudioSequence = useCallback((soundNames) => {
+                
+                const loadAudioWithRetry = (name, maxRetries = 3) => {
+                    if (!name || name === '') {
+                        return Promise.resolve(null);
+                    }
+                    
+                    const fullPath = `${AUDIO_BASE_PATH}${name}.mp3`;
+                    const audio = new Audio(fullPath);
+                    audio.volume = 0.8;
+                    let attempts = 0;
+
+                    return new Promise((resolve, reject) => {
+                        const tryLoad = () => {
+                            attempts++;
+                            
+                            if (audio.readyState >= 2) { 
+                                resolve(audio);
+                                return;
+                            }
+                            
+                            const handleSuccess = () => {
+                                audio.removeEventListener('error', handleError); 
+                                resolve(audio);
+                            };
+                            
+                            const handleError = (e) => {
+                                audio.removeEventListener('canplaythrough', handleSuccess);
+                                audio.removeEventListener('error', handleError); 
+                                
+                                if (attempts < maxRetries) {
+                                    setTimeout(tryLoad, 500); 
+                                } else {
+                                    console.error(`[LỖI TẢI FILE] Thất bại sau ${maxRetries} lần thử cho: ${audio.src}. Bỏ qua file.`);
+                                    reject(new Error(`Failed to load ${audio.src}.`));
+                                }
+                            };
+
+                            audio.addEventListener('canplaythrough', handleSuccess, { once: true });
+                            audio.addEventListener('error', handleError, { once: true });
+                            
+                            audio.load();
+                        };
+                        
+                        tryLoad();
+                    });
+                };
+
+                const loadPromises = soundNames.map(name => loadAudioWithRetry(name).catch(e => {
+                    console.warn(`Tải file "${name}.mp3" thất bại, sẽ bỏ qua.`);
+                    return null;
+                }));
+
+
+                return Promise.all(loadPromises)
+                    .then(audioObjects => audioObjects.filter(obj => obj !== null))
+                    .catch(error => {
+                        console.warn('Toàn bộ chuỗi phát âm thanh này đã bị bỏ qua do lỗi tải file đã được ghi nhận ở trên.');
+                        return []; 
+                    });
+
+            }, []);
+
+            const playNext = useCallback(() => {
+                if (audioQueue.current.length > 0 && !isPlaying.current) {
+                    isPlaying.current = true;
+                    const currentSequence = audioQueue.current.shift(); 
+                    let currentAudioIndex = 0;
+
+                    const playSequence = () => {
+                        if (currentAudioIndex >= currentSequence.length) {
+                            isPlaying.current = false; 
+                            playNext(); 
+                            return;
+                        }
+
+                        const audio = currentSequence[currentAudioIndex];
+                        
+                        audio.onended = () => {
+                            currentAudioIndex++;
+                            playSequence(); 
+                        };
+
+                        audio.play().catch(e => {
+                            console.warn("Autoplay was prevented or playback error:", audio.src, e);
+                            currentAudioIndex++;
+                            playSequence();
+                        });
+                    };
+
+                    if (currentSequence.length > 0) {
+                        playSequence();
+                    } else {
+                        isPlaying.current = false;
+                        playNext();
+                    }
+                }
+            }, []);
+
+            const addToQueue = useCallback((soundNamesArray) => {
+                const loadingPromise = preloadAudioSequence(soundNamesArray)
+                    .then(preloadedAudioObjects => {
+                        if (preloadedAudioObjects.length > 0) {
+                            audioQueue.current.push(preloadedAudioObjects);
+                        }
+                    })
+                    .finally(() => {
+                        if (!isPlaying.current) {
+                            playNext();
+                        }
+                    });
+
+                return loadingPromise; 
+            }, [playNext, preloadAudioSequence]);
+
+
+            const addMultipleSequencesToQueue = useCallback((sequences) => {
+                
+                const loadingPromises = sequences.map(soundNamesArray => {
+                     return preloadAudioSequence(soundNamesArray);
+                });
+
+                Promise.all(loadingPromises)
+                    .then(allPreloadedSequences => {
+                        allPreloadedSequences.forEach(preloadedAudioObjects => {
+                            if (preloadedAudioObjects && preloadedAudioObjects.length > 0) {
+                                audioQueue.current.push(preloadedAudioObjects);
+                            }
+                        });
+                    })
+                    .finally(() => {
+                        if (!isPlaying.current) {
+                            playNext();
+                        }
+                    });
+
+            }, [playNext, preloadAudioSequence]);
+
+
+            return { 
+                addToQueue: addToQueue,
+                addMultipleSequencesToQueue: addMultipleSequencesToQueue
+            };
+        };
+
+
+        // --- Logic Ghi lịch sử lên GitHub (Yêu cầu 5 & Bổ sung chống trùng lặp) ---
+        // *** CẬP NHẬT: Thêm 'isGameSaved', 'setIsGameSaved' làm tham số ***
+        const useGitHubHistory = (sortedScores, gameState, history, startTime, isGameSaved, setIsGameSaved) => { 
+            const historyRef = useRef([]); 
+            const shaRef = useRef(null); 
+            
+            // BỎ: const currentSessionKey = `game_saved_${history.length}`;
+            
+            const getAndSetSha = useCallback(async () => {
+                try {
+                    const response = await fetch(GITHUB_API_URL, {
+                        headers: {
+                            'Authorization': `token ${GITHUB_TOKEN}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+
+                    if (response.status === 404) {
+                        // File not found, need to create it
+                        shaRef.current = null;
+                        return [];
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`GitHub GET failed with status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    shaRef.current = data.sha;
+                    
+                    // Decode content
+                    const decodedContent = atob(data.content);
+                    // Decode Base64 string to original UTF-8 string
+                    const utf8String = decodeURIComponent(escape(decodedContent));
+                    
+                    const existingHistory = JSON.parse(utf8String);
+                    return Array.isArray(existingHistory) ? existingHistory : [];
+
+                } catch (error) {
+                    console.error("Lỗi khi lấy lịch sử từ GitHub:", error);
+                    shaRef.current = null;
+                    return []; 
+                }
+            }, []);
+
+            const saveHistoryToGithub = useCallback(async (currentSortedScores) => {
+                // KIỂM TRA LOCAL STORAGE TRƯỚC KHI LƯU
+                if (isGameSaved) {
+                    console.log("Lịch sử ván chơi này đã được lưu. Bỏ qua lưu GitHub.");
+                    return; // Ngăn chặn việc lưu trùng lặp
+                }
+                
+                if (!currentSortedScores || currentSortedScores.length === 0) {
+                    console.log("Không có điểm để lưu. Bỏ qua lưu GitHub.");
+                    return;
+                }
+                
+                try {
+                    // 1. Lấy lịch sử hiện tại và SHA
+                    const existingHistory = await getAndSetSha();
+                    
+                    // *** CẬP NHẬT: Thêm startTime và endTime vào newEntry ***
+                    const newEntry = {
+                        startTime: startTime, // Thời gian bắt đầu (từ state)
+                        endTime: new Date().toISOString(), // Thời gian kết thúc (lúc lưu)
+                        game: currentSortedScores.map((p, index) => ({
+                            name: p.name,
+                            rank: index + 1, // Thứ hạng 1, 2, 3, 4
+                        }))
+                    };
+                    
+                    const newHistory = [...existingHistory, newEntry];
+                    
+                    // 3. Chuẩn bị nội dung cho API (UTF-8 và Base64)
+                    const contentString = JSON.stringify(newHistory, null, 2);
+                    
+                    // Encode UTF-8 string to Base64 (Hỗ trợ tiếng Việt có dấu)
+                    const base64Content = btoa(unescape(encodeURIComponent(contentString)));
+                    
+                    const payload = {
+                        message: `Hoàn tất game vào lúc ${new Date().toLocaleString('vi-VN')}`,
+                        content: base64Content,
+                        sha: shaRef.current, // Gửi SHA nếu có (update)
+                    };
+                    
+                    const response = await fetch(GITHUB_API_URL, {
+                        method: shaRef.current ? 'PUT' : 'PUT', // Dùng PUT cho cả tạo mới và update
+                        headers: {
+                            'Authorization': `token ${GITHUB_TOKEN}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`GitHub PUT/POST failed with status: ${response.status}`);
+                    }
+
+                    console.log("Lịch sử trò chơi đã được lưu thành công lên GitHub!");
+                    // ĐẶT CỜ BÁO HIỆU LƯU THÀNH CÔNG VÀO LOCAL STORAGE (THÔNG QUA STATE)
+                    setIsGameSaved(true);
+                    
+                    // Cập nhật SHA mới
+                    const result = await response.json();
+                    shaRef.current = result.content.sha;
+
+                } catch (error) {
+                    console.error("LỖI CẤP CAO khi lưu lịch sử lên GitHub:", error);
+                    // Không đặt cờ nếu lưu thất bại
+                }
+            // *** CẬP NHẬT: Thêm startTime, isGameSaved, setIsGameSaved vào dependency array ***
+            }, [getAndSetSha, startTime, isGameSaved, setIsGameSaved]); 
+            
+            // Kích hoạt việc lưu khi chuyển sang Game Over
+            useEffect(() => {
+                if (gameState === 'game_over' && history.length > 0) {
+                    // Chỉ lưu khi có ít nhất 1 ván đã chơi
+                    saveHistoryToGithub(sortedScores);
+                }
+            }, [gameState, sortedScores, saveHistoryToGithub, history.length]); 
+        // *** KẾT THÚC CẬP NHẬT ***
+        };
+
+        // --- 2. Component Con: Modal (Thay thế alert/confirm) ---
+
+        const Modal = ({ title, content, isOpen, onClose, onConfirm, confirmText = "Xác nhận", cancelText = "Hủy bỏ", showCancel = true }) => {
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50 animate-fade-in">
+                    <div className="bg-white rounded-xl shadow-3xl w-full max-w-sm animate-bounce-in">
+                        <header className="px-4 py-3 bg-primary rounded-t-xl">
+                            <h3 className="text-xl font-bold text-white">{title}</h3>
+                        </header>
+                        <div className="p-4">
+                            {content}
+                        </div>
+                        {/* Căn giữa nút xác nhận */}
+                        <footer className="flex justify-center space-x-3 p-4 border-t border-gray-100"> 
+                            {showCancel && (
+                                <button
+                                    onClick={onClose}
+                                    className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-200 rounded-lg transition"
+                                >
+                                    {cancelText}
+                                </button>
+                            )}
+                            <button
+                                onClick={onConfirm}
+                                className="px-4 py-2 text-sm font-semibold text-white bg-secondary rounded-lg transition"
+                            >
+                                {confirmText}
+                            </button>
+                        </footer>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 3. Component Chính: App ---
+
+        function App() {
+            // State chính của ứng dụng
+            const [gameState, setGameState] = useLocalStorageState('gameState', 'setup'); 
+            const [players, setPlayers] = useLocalStorageState('players', []);
+            const [maxRounds, setMaxRounds] = useLocalStorageState('maxRounds', 15); 
+            const [history, setHistory] = useLocalStorageState('history', []);
+            
+            // *** THÊM MỚI: State cho startTime ***
+            const [startTime, setStartTime] = useLocalStorageState('startTime', null); 
+            
+            // *** THÊM MỚI: State cho cờ chống trùng lặp GitHub (LocalStorage) ***
+            const [isGameSaved, setIsGameSaved] = useLocalStorageState('isGameSaved', false);
+            // *** KẾT THÚC THÊM MỚI ***
+
+            const [showHistory, setShowHistory] = useState(false);
+            const [showGameOverHistory, setShowGameOverHistory] = useState(false);
+            const [isScoringMode, setIsScoringMode] = useState(false);
+            const [newPlayerName, setNewPlayerName] = useState('');
+            const [roundScoreInputs, setRoundScoreInputs] = useLocalStorageState('roundScoreInputs', {});
+            const [modal, setModal] = useState({ isOpen: false, type: null, data: null });
+            const [newMaxRoundsInput, setNewMaxRoundsInput] = useState(15);
+            
+            const { addToQueue, addMultipleSequencesToQueue } = useAudioQueue(); 
+
+            // Tính toán tổng điểm (Giữ nguyên thứ tự người chơi khi họ được thêm vào)
+            const unsortedPlayerScores = useMemo(() => {
+                return players.map(p => {
+                    const totalScore = history.reduce((sum, round) => sum + (round.scores[p.id] || 0), 0);
+                    return { ...p, totalScore: Number(totalScore) };
+                }); 
+            }, [players, history]);
+            
+            // Tính toán Bảng xếp hạng để truyền vào hook GitHub
+            const sortedScores = useMemo(() => {
+                return [...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore);
+            }, [unsortedPlayerScores]);
+
+            // *** CẬP NHẬT: Kích hoạt Hook lưu lịch sử GitHub (Thêm 'startTime', 'isGameSaved', 'setIsGameSaved') ***
+            useGitHubHistory(sortedScores, gameState, history, startTime, isGameSaved, setIsGameSaved); 
+            // *** KẾT THÚC CẬP NHẬT ***
+
+
+            // --- Logic Audio: Phát âm thanh đọc điểm VÁN MỚI ---
+            const playScoreAudio = (currentRoundScores) => {
+                
+                // 1. Tạo mảng chi tiết điểm, có điểm ván vừa ghi
+                const scoreDetails = players.map(p => ({
+                    ...p, // Đã bao gồm audioFile
+                    score: Number(currentRoundScores[p.id] || 0), 
+                }));
+                
+                // 2. Sắp xếp theo điểm ván vừa ghi (cao -> thấp)
+                scoreDetails.sort((a, b) => b.score - a.score);
+
+                let allAudioSequences = [];
+                
+                scoreDetails.forEach(detail => {
+                    // LẤY FILE AUDIO ĐÃ GÁN (normalized name hoặc member1-4)
+                    const nameFile = detail.audioFile; 
+                    const scoreFile = detail.score.toString(); 
+
+                    if (detail.score < -10 || detail.score > 10) {
+                        console.warn(`[CẢNH BÁO AUDIO VÁN] Điểm ${detail.score} của ${detail.name} nằm ngoài phạm vi đọc (-10 đến 10) thông thường. Hãy đảm bảo có file âm thanh "${scoreFile}.mp3".`);
+                    }
+
+                    // Chuỗi phát mới: [Tên người chơi audioFile], [Điểm VÁN VỪA GHI]
+                    const audioSequence = [nameFile, scoreFile];
+                    
+                    allAudioSequences.push(audioSequence);
+                });
+                
+                addMultipleSequencesToQueue(allAudioSequences);
+            };
+
+            // Logic Audio 6a. Phát thông báo ván còn lại
+            const playLowRoundAudio = useCallback((roundsLeft) => {
+                let audioFile = null;
+                if (roundsLeft === 3) {
+                    audioFile = '3left';
+                } else if (roundsLeft === 2) {
+                    audioFile = '2left';
+                } else if (roundsLeft === 1) {
+                    audioFile = '1left';
+                }
+                if (audioFile) {
+                    addToQueue([audioFile]);
+                }
+            }, [addToQueue]);
+
+
+            // --- 5. Lịch sử điểm và Tổng kết ván (useEffect chính) ---
+            useEffect(() => {
+                const roundsLimit = parseInt(maxRounds);
+                const currentRound = history.length;
+                
+                if (gameState !== 'playing' || roundsLimit <= 0) return;
+
+                const roundsLeft = roundsLimit - currentRound;
+                let delayTimer = null;
+
+                // 1. Logic Game Over - KHI ĐẠT GIỚI HẠN VÁN
+                if (currentRound >= roundsLimit) {
+                    setGameState('game_over');
+                    addToQueue(['gameover']); 
+                    return;
+                }
+
+                // 2. Logic Low Rounds Notification
+                if (currentRound > 0) { 
+                    delayTimer = setTimeout(() => {
+                        playLowRoundAudio(roundsLeft);
+                    }, 5000); 
+                }
+                
+                return () => {
+                    if (delayTimer) {
+                        clearTimeout(delayTimer);
+                    }
+                };
+            }, [history, maxRounds, gameState, players, addToQueue, playLowRoundAudio, unsortedPlayerScores]); 
+            
+            useEffect(() => {
+                 if (players.length > 0 && gameState === 'playing' && Object.keys(roundScoreInputs).length === 0) {
+                    const initialInputs = players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
+                    setRoundScoreInputs(initialInputs);
+                }
+            }, [players, gameState, roundScoreInputs]);
+
+
+            // --- 7. Hoàn tác (Undo) ---
+            const confirmUndo = () => {
+                const isFirstRound = history.length === 1;
+                
+                setHistory(prev => prev.slice(0, -1)); 
+                setGameState('playing');
+                setIsScoringMode(false);
+                setRoundScoreInputs({});
+                setModal({ isOpen: false, type: null, data: null });
+                addToQueue(['hoantac']); 
+                // BỎ: sessionStorage.removeItem(`game_saved_${history.length}`); 
+
+                // Nếu hoàn tác ván đầu tiên, phải reset startTime
+                if (isFirstRound) {
+                    setStartTime(null);
+                }
+                // KHÔNG reset isGameSaved ở đây vì game vẫn còn
+            };
+            
+            const handleUndo = () => {
+                if (history.length === 0 || isScoringMode) return;
+                setModal({
+                    isOpen: true,
+                    type: 'confirm_action',
+                    data: { action: 'Hoàn Tác Ván Cuối', onConfirm: confirmUndo }
+                });
+            };
+
+            // --- 8. Reset Game ---
+            const confirmResetGame = () => {
+                setGameState('setup');
+                setPlayers([]);
+                setHistory([]);
+                setIsScoringMode(false);
+                setRoundScoreInputs({});
+                setMaxRounds(15); 
+                
+                // *** THÊM MỚI: Reset startTime ***
+                setStartTime(null); 
+                
+                // *** THÊM MỚI: Reset cờ isGameSaved ***
+                setIsGameSaved(false);
+                // *** KẾT THÚC THÊM MỚI ***
+                
+                localStorage.clear(); 
+                // BỎ: Object.keys(sessionStorage).forEach...
+                
+                setModal({ isOpen: false, type: null, data: null });
+            };
+            
+            const handleResetGame = () => {
+                if (isScoringMode) return;
+                setModal({
+                    isOpen: true,
+                    type: 'confirm_action',
+                    data: { action: 'Reset Game', onConfirm: confirmResetGame }
+                });
+            };
+            
+            // --- 9. Kết Thúc Game
+             const handleEndGameConfirm = () => {
+                if (isScoringMode) return;
+                setModal({
+                    isOpen: true,
+                    type: 'confirm_action',
+                    data: { 
+                        action: 'Kết Thúc Game', 
+                        onConfirm: () => {
+                            setGameState('game_over');
+                            addToQueue(['gameover']); 
+                            setModal({ isOpen: false, type: null, data: null });
+                        }
+                    }
+                });
+            };
+
+
+            // --- Xử lý Stage: Setup (Giai đoạn I) ---
+            
+            const handleAddPresetPlayer = (nameToAdd) => {
+                if (!nameToAdd) return; 
+
+                if (players.length >= MAX_PLAYERS) {
+                    setModal({
+                        isOpen: true,
+                        type: 'info',
+                        data: { title: 'Thông báo', message: `Số lượng người chơi tối đa là ${MAX_PLAYERS}.` }
+                    });
+                    return;
+                }
+
+                const trimmedName = nameToAdd.trim();
+                if (players.some(p => p.name.toLowerCase() === trimmedName.toLowerCase())) {
+                    setModal({
+                        isOpen: true,
+                        type: 'info',
+                        data: { title: 'Thông báo', message: `Người chơi '${trimmedName}' đã tồn tại.` }
+                    });
+                    return;
+                }
+
+                const newPlayer = createPlayerObject(trimmedName, false, players);
+                setPlayers([...players, newPlayer]);
+            };
+
+            const handleRemovePlayer = (playerName) => {
+                const existingPlayer = players.find(p => p.name === playerName); 
+                if (existingPlayer) {
+                    const newPlayers = players.filter(p => p.id !== existingPlayer.id);
+                    setPlayers(newPlayers);
+                }
+            };
+            
+            const handleTogglePresetPlayer = (name) => {
+                if (players.some(p => p.name === name)) {
+                    handleRemovePlayer(name);
+                } else {
+                    handleAddPresetPlayer(name);
+                }
+            };
+
+
+            const handleAddNewPlayer = () => {
+                const trimmedName = newPlayerName.trim();
+                if (!trimmedName) return;
+
+                if (players.length >= MAX_PLAYERS) {
+                     setModal({
+                        isOpen: true,
+                        type: 'info',
+                        data: { title: 'Thông báo', message: `Số lượng người chơi tối đa là ${MAX_PLAYERS}.` }
+                    });
+                    return;
+                }
+                
+                if (players.some(p => p.name.toLowerCase() === trimmedName.toLowerCase()) || PRESET_PLAYERS.some(p => p.toLowerCase() === trimmedName.toLowerCase())) {
+                     setModal({
+                        isOpen: true,
+                        type: 'info',
+                        data: { title: 'Thông báo', message: `Người chơi '${trimmedName}' đã tồn tại.` }
+                    });
+                    return;
+                }
+                
+                const newPlayer = createPlayerObject(trimmedName, true, players);
+                setPlayers([...players, newPlayer]);
+                setNewPlayerName('');
+            };
+            
+            const handleStartGame = () => {
+                if (players.length < 2) {
+                    setModal({
+                        isOpen: true,
+                        type: 'info',
+                        data: { title: 'Lỗi', message: 'Cần tối thiểu 2 người chơi để bắt đầu trò chơi.' }
+                    });
+                    return;
+                }
+                
+                const finalMaxRounds = parseInt(maxRounds);
+                if (isNaN(finalMaxRounds) || finalMaxRounds < 1) {
+                    setModal({
+                        isOpen: true,
+                        type: 'info',
+                        data: { title: 'Lỗi', message: 'Số ván chơi phải là một số nguyên dương hợp lệ (tối thiểu 1).' }
+                    });
+                    setMaxRounds(15); 
+                    return;
+                }
+
+                setMaxRounds(finalMaxRounds); 
+                setGameState('playing');
+                const initialInputs = players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
+                setRoundScoreInputs(initialInputs);
+            };
+
+            // --- Xử lý Stage: Playing (Giai đoạn II) ---
+
+            const handleNewScoreClick = () => {
+                if (!isScoringMode) {
+                    addToQueue(['vanmoi']); 
+                    setIsScoringMode(true);
+                    const initialInputs = unsortedPlayerScores.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {});
+                    setRoundScoreInputs(initialInputs);
+                } else {
+                    handleConfirmScore();
+                }
+            };
+
+            const handleScoreChange = (playerId, value) => {
+                const numValue = value === '' ? '' : parseInt(value);
+                setRoundScoreInputs(prev => ({ ...prev, [playerId]: isNaN(numValue) ? value : numValue }));
+            };
+
+            const handleConfirmScore = () => {
+                const newRoundScores = {};
+
+                unsortedPlayerScores.forEach(p => {
+                    const score = roundScoreInputs[p.id];
+                    if (score === '' || score === null || isNaN(score)) {
+                        newRoundScores[p.id] = 0; 
+                    } else {
+                        newRoundScores[p.id] = parseInt(score); 
+                    }
+                });
+                
+                // *** THÊM MỚI: Ghi startTime nếu là ván 1 ***
+                if (history.length === 0) {
+                    setStartTime(new Date().toISOString());
+                }
+                // *** KẾT THÚC THÊM MỚI ***
+
+                const newHistoryEntry = {
+                    round: history.length + 1,
+                    scores: newRoundScores,
+                    timestamp: new Date().toISOString()
+                };
+                setHistory(prev => [...prev, newHistoryEntry]);
+
+                playScoreAudio(newRoundScores);
+
+                setIsScoringMode(false);
+                setRoundScoreInputs({});
+            };
+            
+            const handleSetRoundsClick = () => {
+                if (isScoringMode) return;
+                 setModal({
+                    isOpen: true,
+                    type: 'reset_rounds',
+                    data: { currentMax: parseInt(maxRounds) || 15, playedRounds: history.length }
+                });
+                setNewMaxRoundsInput(parseInt(maxRounds) || 15);
+            };
+
+            const confirmResetRounds = () => {
+                const newMax = parseInt(newMaxRoundsInput);
+                if (isNaN(newMax) || newMax <= 0) {
+                    setModal({
+                        isOpen: true,
+                        type: 'info',
+                        data: { title: 'Lỗi', message: 'Số ván mới phải là một số nguyên dương hợp lệ.' }
+                    });
+                    return;
+                }
+                if (newMax < history.length) {
+                    setModal({
+                        isOpen: true,
+                        type: 'info',
+                        data: { title: 'Lỗi', message: `Số ván mới (${newMax}) không được nhỏ hơn số ván đã chơi (${history.length}).` }
+                    });
+                    return;
+                }
+                
+                setMaxRounds(newMax);
+                setModal({ isOpen: false, type: null, data: null });
+                addToQueue(['dasetsovan']); 
+                
+                if (history.length >= newMax) {
+                    setGameState('game_over');
+                    addToQueue(['gameover']); 
+                }
+            };
+
+            const renderModalContent = () => {
+                switch (modal.type) {
+                    case 'info':
+                        return <div><p className="text-gray-700">{modal.data.message}</p></div>;
+                    case 'confirm_action': 
+                        return <div><p className="text-gray-700 font-medium">Xác nhận **{modal.data.action}**?</p></div>;
+                    case 'reset_rounds':
+                        return (
+                            <div>
+                                <p className="text-gray-700 mb-4">
+                                    Ván đã chơi: <span className="font-bold text-primary">{modal.data.playedRounds}</span>.
+                                    Số ván tối thiểu phải là <span className="font-bold text-primary">{modal.data.playedRounds}</span>.
+                                </p>
+                                <label className="block text-sm font-medium text-gray-700">Nhập số ván mới:</label>
+                                <input
+                                    type="number"
+                                    min={modal.data.playedRounds}
+                                    value={newMaxRoundsInput}
+                                    onChange={(e) => setNewMaxRoundsInput(e.target.value)}
+                                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-primary focus:border-primary"
+                                />
+                            </div>
+                        );
+                    default:
+                        return null;
+                }
+            };
+
+            // --- Render các Stage ---
+            
+            // Stage 0: Setup
+            const renderSetup = () => {
+                
+                // THAY ĐỔI: Tạo danh sách hiển thị bao gồm cả người chơi tùy chỉnh
+                const customPlayerNames = players
+                    .map(p => p.name)
+                    .filter(name => !PRESET_PLAYERS.includes(name));
+                
+                const displayList = [...PRESET_PLAYERS, ...customPlayerNames];
+
+                // Kiểm tra xem số ván hiện tại có phải là giá trị tùy chỉnh không
+                const isCustomRound = !PRESET_ROUNDS.includes(parseInt(maxRounds));
+
+                return (
+                    <div className="p-4 sm:p-6 pb-2">
+                        <h2 className="text-xl font-bold text-primary mb-4 text-center">⚙️ Cấu Hình Trò Chơi</h2>
+
+                        {/* Chọn Số Ván */}
+                        <div className="mb-4 p-4 bg-white rounded-xl shadow-lg border border-indigo-100">
+                            <h3 className="text-md font-semibold mb-3 text-gray-700 flex items-center">
+                                1. Chọn Số Ván Chơi 
+                                <span className="ml-2 px-3 py-1 text-xs font-bold text-primary bg-indigo-100 rounded-full">
+                                    Hiện tại: {parseInt(maxRounds) || 15}
+                                </span>
+                            </h3>
+                            
+                            {/* ĐIỀU CHỈNH: Đưa Input vào cùng hàng với các nút */}
+                            <div className="flex flex-wrap gap-2 items-center"> 
+                                {PRESET_ROUNDS.map(r => (
+                                    <button
+                                        key={r}
+                                        onClick={() => setMaxRounds(r)}
+                                        className={`px-3 py-1 text-sm font-medium rounded-full transition duration-200 shadow-md ${parseInt(maxRounds) === r ? 'bg-primary text-white font-bold' : 'bg-gray-200 text-gray-700'} flex-shrink-0`}
+                                    >
+                                        {r} Ván
+                                    </button>
+                                ))}
+                                
+                                {/* Custom Input Button/Box tích hợp vào flex container */}
+                                {/* Tối ưu hóa: Bỏ flex-grow, giảm min-w để vừa hơn trên mobile */}
+                                <div className="min-w-[70px] flex-1"> 
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={maxRounds} 
+                                        onChange={(e) => setMaxRounds(e.target.value)} 
+                                        onBlur={(e) => {
+                                            const val = parseInt(e.target.value);
+                                            if (isNaN(val) || val < 1) {
+                                                setMaxRounds(1);
+                                            } else {
+                                                setMaxRounds(val);
+                                            }
+                                        }}
+                                        // Styling mới để hòa hợp và nhấn mạnh khi là tùy chỉnh
+                                        className={`w-full px-3 py-1 text-sm font-medium border-2 rounded-full text-center shadow-md 
+                                                    ${isCustomRound ? 'bg-indigo-100 border-primary text-primary font-bold' : 'bg-gray-200 border-gray-300 text-gray-700'} 
+                                                    focus:ring-secondary focus:border-secondary transition`}
+                                        placeholder="Ván..."
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Chọn Người Chơi */}
+                        <div className="mb-4 p-4 bg-white rounded-xl shadow-lg border border-emerald-100">
+                            <h3 className="text-md font-semibold mb-3 text-gray-700">2. Thêm Người Chơi ({players.length}/{MAX_PLAYERS})</h3>
+                            
+                            {/* Lưới 2 cột cho người chơi */}
+                            <div className="grid grid-cols-2 gap-2 mb-4">
+                                {displayList.map(name => {
+                                    const isSelected = players.some(p => p.name === name);
+                                    const isDisabled = !isSelected && players.length >= MAX_PLAYERS;
+                                    
+                                    return (
+                                        <button
+                                            key={name}
+                                            onClick={() => handleTogglePresetPlayer(name)}
+                                            disabled={isDisabled}
+                                            className={`p-2 rounded-lg border-2 transition-all duration-200 ease-in-out 
+                                                        flex items-center justify-center relative text-sm font-medium text-center
+                                                        ${isSelected 
+                                                            ? 'bg-secondary border-secondary/50 text-white font-bold shadow-lg'
+                                                            : 'bg-secondary/10 border-secondary/30 text-gray-700'}
+                                                        ${isDisabled ? 'opacity-50 cursor-not-allowed bg-gray-100 border-gray-200' : ''}
+                                                    `}
+                                        >
+                                            {isSelected && (
+                                                <span className="absolute -top-2 -right-2 bg-white text-secondary rounded-full w-5 h-5 flex items-center justify-center text-sm font-bold border border-secondary/50">✓</span>
+                                            )}
+                                            {name}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Thêm người chơi mới (Tùy chỉnh) */}
+                            <div className="flex space-x-2 mt-3 pt-3 border-t border-gray-100">
+                                <input
+                                    type="text"
+                                    value={newPlayerName}
+                                    onChange={(e) => setNewPlayerName(e.target.value)}
+                                    placeholder="Tên người chơi tùy chỉnh..."
+                                    className="flex-grow p-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-primary focus:border-primary disabled:bg-gray-100"
+                                    disabled={players.length >= MAX_PLAYERS}
+                                />
+                                <button
+                                    onClick={handleAddNewPlayer}
+                                    className="p-2 bg-primary text-white rounded-lg font-semibold text-sm transition disabled:bg-gray-400"
+                                    disabled={!newPlayerName.trim() || players.length >= MAX_PLAYERS}
+                                >
+                                    Thêm
+                                </button>
+                            </div>
+                            
+                        </div>
+
+                        {/* Nút Bắt đầu */}
+                        <button
+                            onClick={handleStartGame}
+                            disabled={players.length < 2}
+                            className="w-full py-4 bg-secondary text-white font-extrabold text-lg rounded-xl shadow-2xl transition duration-300 transform disabled:bg-gray-400 mt-6"
+                        >
+                            {players.length < 2 ? 'Cần 2 người chơi để bắt đầu' : `BẮT ĐẦU TRÒ CHƠI (${parseInt(maxRounds) || 15} VÁN)`}
+                        </button>
+                    </div>
+                );
+            };
+
+
+            // Stage 1: Playing
+            const renderPlaying = () => (
+                <div className="p-4"> 
+                    <h2 className="text-2xl font-extrabold text-primary mb-3 text-center"> 
+                        VÁN <span className="text-secondary">{history.length + 1}</span> / {parseInt(maxRounds) || 15}
+                    </h2>
+                    
+                    {/* Nút Ghi/Xác nhận điểm */}
+                     <button
+                        onClick={handleNewScoreClick}
+                        className={`w-full py-3 font-extrabold text-white rounded-xl shadow-xl transition duration-300 transform mb-4 
+                            ${isScoringMode ? 'bg-secondary animate-pulse-strong text-lg' : 'bg-primary text-base'}`} 
+                        disabled={unsortedPlayerScores.length === 0}
+                    >
+                        {isScoringMode ? `✅ XÁC NHẬN GHI ĐIỂM VÁN ${history.length + 1}` : 'GHI ĐIỂM VÁN MỚI'}
+                    </button>
+                    
+                    {/* Vùng Hiện Thị Tên Người Chơi và Ghi Điểm */}
+                    <div className={`p-4 rounded-xl shadow-xl mb-4 transition duration-500 
+                                     ${isScoringMode ? 'bg-indigo-50 border-4 border-indigo-200 animate-fade-in' : 'bg-white border-2 border-gray-200'}`}> 
+                        <h3 className="text-xl font-bold text-gray-700 mb-3 border-b pb-2"> 
+                            {isScoringMode ? '✏️ Nhập Điểm Ván Mới' : '👥 Người Chơi'}
+                        </h3>
+                        <div className="space-y-3"> 
+                            {unsortedPlayerScores.map(p => ( 
+                                <div key={p.id} className="flex justify-between items-center py-1 bg-white p-3 rounded-lg shadow-md border border-gray-100">
+                                    {/* Tên người chơi */}
+                                    <div className={`flex items-center ${isScoringMode ? 'w-1/2' : 'flex-grow'}`}>
+                                        <span className={`text-lg font-bold ${isScoringMode ? 'text-gray-800' : 'text-primary'} truncate`}>
+                                            {p.name}
+                                        </span>
+                                    </div>
+                                    
+                                    {/* Scoring Input/Controls */}
+                                    {isScoringMode && (
+                                        <div className="grid grid-cols-3 w-1/2 gap-1.5">
+                                            {/* Nút Giảm */}
+                                            <button 
+                                                onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) - 1)}
+                                                className="p-2 bg-danger text-white rounded-xl font-extrabold text-xl transition duration-150 shadow-md" 
+                                            >
+                                                -
+                                            </button>
+                                            {/* Input Điểm */}
+                                            <input
+                                                type="number"
+                                                value={roundScoreInputs[p.id] === 0 && roundScoreInputs[p.id] !== '' ? '0' : roundScoreInputs[p.id]}
+                                                onChange={(e) => handleScoreChange(p.id, e.target.value)}
+                                                className="p-1 border-2 border-secondary rounded-xl text-center font-mono text-xl font-bold focus:ring-secondary focus:border-secondary"
+                                                placeholder="0"
+                                            />
+                                            {/* Nút Tăng */}
+                                            <button 
+                                                onClick={() => handleScoreChange(p.id, (parseInt(roundScoreInputs[p.id]) || 0) + 1)}
+                                                className="p-2 bg-secondary text-white rounded-xl font-extrabold text-xl transition duration-150 shadow-md" 
+                                            >
+                                                +
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    
+                    
+                    {/* Các nút chức năng (grid 2x2) */}
+                    <div className="grid grid-cols-2 gap-2 mb-4"> 
+                        {/* Hàng 1 */}
+                        <button
+                            onClick={handleSetRoundsClick} 
+                            disabled={isScoringMode}
+                            className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm shadow-md"
+                        >
+                            🔁 Set Ván
+                        </button>
+                         <button
+                            onClick={handleUndo} 
+                            disabled={history.length === 0 || isScoringMode}
+                            className="w-full py-3 bg-warning text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm shadow-md"
+                        >
+                            ↩️ Hoàn Tác
+                        </button>
+                        
+                        {/* Hàng 2 */}
+                        <button
+                            onClick={handleResetGame} 
+                            disabled={isScoringMode}
+                            className="w-full py-3 bg-danger text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm shadow-md"
+                        >
+                            🔄 Reset
+                        </button>
+                        <button
+                            onClick={handleEndGameConfirm} 
+                            disabled={isScoringMode}
+                            className="w-full py-3 bg-gray-600 text-white font-bold rounded-xl transition duration-200 disabled:bg-gray-400 text-sm shadow-md"
+                        >
+                            🛑 Kết Thúc
+                        </button>
+                    </div>
+                    
+                    
+                    {/* Lịch sử điểm */}
+                    <div className="bg-white p-4 rounded-xl shadow-xl border border-gray-200"> 
+                        <button 
+                            onClick={() => setShowHistory(prev => !prev)}
+                            className="w-full text-left text-lg font-bold text-gray-700 p-1 rounded-lg transition flex justify-between items-center"
+                        >
+                            Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showHistory ? '▲' : '▼'}
+                        </button>
+                        {showHistory && (
+                            <div className="overflow-x-auto mt-3 max-h-60 border rounded-lg"> 
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-100 sticky left-0 z-10">
+                                        <tr>
+                                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-600 uppercase sticky left-0 bg-gray-100 shadow-sm min-w-[100px]">Người chơi</th>
+                                            {[...Array(history.length)].map((_, index) => (
+                                                <th key={index} className="px-3 py-2 text-center text-xs font-bold text-gray-600 uppercase min-w-[50px]">Ván {history.length - index}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {players.map(p => (
+                                            <tr key={p.id}>
+                                                <td 
+                                                    className="px-3 py-2 whitespace-nowrap text-sm font-semibold text-gray-900 sticky left-0 bg-white shadow-sm truncate" 
+                                                    title={p.name}
+                                                >
+                                                    {p.name}
+                                                </td>
+                                                {[...history].reverse().map(entry => {
+                                                    const score = entry.scores[p.id] || 0;
+                                                    const colorClass = score > 0 ? 'text-secondary font-extrabold' : (score < 0 ? 'text-danger font-semibold' : 'text-gray-500');
+                                                    return (
+                                                        <td key={entry.round} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass} min-w-[50px] font-mono`}>
+                                                            {score > 0 ? `+${score}` : score}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+
+            // Stage 2: Game Over
+            const renderGameOver = () => {
+                const playerCount = sortedScores.length;
+                
+                let loserScoreThreshold = null;
+                if (playerCount >= 2) {
+                    loserScoreThreshold = sortedScores[playerCount - 2].totalScore;
+                }
+
+                const isLoser = (p) => {
+                    if (loserScoreThreshold === null) return false;
+                    return p.totalScore <= loserScoreThreshold;
+                };
+
+                return (
+                    <div className="p-4 text-center animate-bounce-in">
+                        <h2 className="text-2xl font-extrabold text-danger mb-1">🎉 TRÒ CHƠI KẾT THÚC! 🎉</h2>
+                        <p className="text-base font-medium text-gray-700 mb-3">Tổng số ván đã chơi: <span className="text-primary font-bold">{history.length}</span></p>
+
+                        {/* Bảng Xếp Hạng */}
+                        <div className="bg-white p-4 rounded-xl shadow-2xl mb-4 border border-indigo-200">
+                            <h3 className="text-xl font-extrabold text-primary mb-3 border-b pb-2">🏆 BẢNG XẾP HẠNG</h3>
+                            {sortedScores.map((p, index) => {
+                                const isCurrentLoser = isLoser(p);
+                                
+                                const itemClassName = `flex justify-between items-center py-2 px-3 my-2 rounded-xl transition transform duration-300 shadow-md 
+                                                       ${isCurrentLoser ? 'bg-red-100 border-2 border-danger scale-[1.03]' : 'bg-gray-50 border-2 border-secondary/50'}`;
+                                
+                                return (
+                                    <div 
+                                        key={p.id} 
+                                        className={itemClassName}
+                                    >
+                                        <div className="flex items-center space-x-2">
+                                            <span className={`text-xl font-extrabold w-6 text-center 
+                                                              ${index === 0 ? 'text-yellow-500' : index === 1 ? 'text-gray-400' : index === 2 ? 'text-amber-700' : 'text-primary'}`}>
+                                                #{index + 1}
+                                            </span>
+                                            <span className={`text-lg font-bold ${isCurrentLoser ? 'text-danger' : 'text-gray-700'}`}>
+                                                {p.name}
+                                            </span>
+                                        </div>
+                                        <span className={`text-2xl font-extrabold ${p.totalScore >= 0 ? 'text-secondary' : 'text-danger'} font-mono`}>
+                                            {p.totalScore}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Lịch sử điểm tại màn hình Game Over */}
+                        <div className="bg-white p-3 rounded-xl shadow-lg mb-4 border border-gray-200">
+                            <button 
+                                onClick={() => setShowGameOverHistory(prev => !prev)}
+                                className="w-full text-left text-lg font-bold text-gray-700 p-1 rounded-lg transition flex justify-between items-center"
+                            >
+                                Lịch Sử Điểm Chi Tiết ({history.length} Ván) {showGameOverHistory ? '▲' : '▼'}
+                            </button>
+                            {showGameOverHistory && (
+                                <div className="overflow-x-auto mt-2 max-h-48 border rounded-lg">
+                                    <table className="min-w-full divide-y divide-gray-200">
+                                        <thead className="bg-gray-100 sticky left-0 z-10">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left text-xs font-bold text-gray-600 uppercase sticky left-0 bg-gray-100 shadow-sm min-w-[100px]">Người chơi</th>
+                                                {[...Array(history.length)].map((_, index) => (
+                                                    <th key={index} className="px-3 py-2 text-center text-xs font-bold text-gray-600 uppercase min-w-[50px]">Ván {history.length - index}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                            {players.map(p => (
+                                                <tr key={p.id}>
+                                                    <td 
+                                                        className="px-3 py-2 whitespace-nowrap text-sm font-semibold text-gray-900 sticky left-0 bg-white shadow-sm truncate" 
+                                                        title={p.name}
+                                                    >
+                                                        {p.name}
+                                                    </td>
+                                                    {[...history].reverse().map(entry => {
+                                                        const score = entry.scores[p.id] || 0;
+                                                        const colorClass = score > 0 ? 'text-secondary font-extrabold' : (score < 0 ? 'text-danger font-semibold' : 'text-gray-500');
+                                                        return (
+                                                            <td key={entry.round} className={`px-3 py-2 whitespace-nowrap text-sm text-center ${colorClass} min-w-[50px] font-mono`}>
+                                                                {score > 0 ? `+${score}` : score}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Nút Chơi Lại */}
+                        <button
+                            onClick={confirmResetGame} 
+                            className="w-full py-3 bg-secondary text-white font-extrabold text-xl rounded-xl shadow-xl transition transform"
+                        >
+                            CHƠI LẠI
+                        </button>
+                    </div>
+                );
+            };
+            
+            // --- Logic Render Chính ---
+
+            return (
+                <div className="min-h-screen bg-gray-50 flex justify-center">
+                    <div className="w-full max-w-xl mx-auto bg-white shadow-3xl rounded-2xl overflow-hidden my-0 sm:my-6">
+                        <header className="bg-primary text-white p-4 text-center">
+                            {/* Thay đổi tiêu đề chính */}
+                            <h1 className="text-3xl font-extrabold">TIẾN LÊN MIỀN TRUNG</h1> 
+                        </header>
+                        
+                        {gameState === 'setup' && renderSetup()}
+                        {gameState === 'playing' && renderPlaying()}
+                        {gameState === 'game_over' && renderGameOver()}
+                    </div>
+
+                    {/* Modal Popup */}
+                    <Modal
+                        title={modal.type === 'info' ? 'Thông báo' : 
+                               modal.type === 'confirm_action' ? 'Xác nhận' : 'Set lại Số Ván Chơi'}
+                        isOpen={modal.isOpen}
+                        onClose={() => setModal({ isOpen: false, type: null, data: null })}
+                        onConfirm={modal.type === 'confirm_action' ? modal.data.onConfirm : 
+                                   modal.type === 'reset_rounds' ? confirmResetRounds :
+                                   () => setModal({ isOpen: false, type: null, data: null }) 
+                                  }
+                        confirmText={modal.type === 'info' ? 'Đóng' : 'Xác nhận'}
+                        showCancel={modal.type !== 'info'}
+                        content={renderModalContent()}
+                    />
+                </div>
+            );
+        }
+
+        // Render ứng dụng React vào DOM
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 </body>
 </html>

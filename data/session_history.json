@@ -1,2 +1,24 @@
 [
+  {
+    "startTime": "2025-11-02T18:19:38.381Z",
+    "endTime": "2025-11-02T18:19:43.430Z",
+    "game": [
+      {
+        "name": "Đông Lê",
+        "rank": 1
+      },
+      {
+        "name": "Dũng Nguyễn",
+        "rank": 2
+      },
+      {
+        "name": "Bình Đặng",
+        "rank": 3
+      },
+      {
+        "name": "Minh Anh",
+        "rank": 4
+      }
+    ]
+  }
 ]

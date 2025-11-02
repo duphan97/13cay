@@ -293,12 +293,13 @@
 
 
         // --- Logic Ghi lịch sử lên GitHub (Yêu cầu 5 & Bổ sung chống trùng lặp) ---
-        // *** CẬP NHẬT: Thêm 'isGameSaved', 'setIsGameSaved' làm tham số ***
-        const useGitHubHistory = (sortedScores, gameState, history, startTime, isGameSaved, setIsGameSaved) => { 
+        // *** CẬP NHẬT: Thêm 'startTime' làm tham số ***
+        const useGitHubHistory = (sortedScores, gameState, history, startTime) => { 
             const historyRef = useRef([]); 
             const shaRef = useRef(null); 
             
-            // BỎ: const currentSessionKey = `game_saved_${history.length}`;
+            // TẠO MỘT KHÓA DUY NHẤT CHO TRẠNG THÁI GAME HIỆN TẠI (Dựa trên tổng số ván đã chơi)
+            const currentSessionKey = `game_saved_${history.length}`;
             
             const getAndSetSha = useCallback(async () => {
                 try {
@@ -338,8 +339,8 @@
             }, []);
 
             const saveHistoryToGithub = useCallback(async (currentSortedScores) => {
-                // KIỂM TRA LOCAL STORAGE TRƯỚC KHI LƯU
-                if (isGameSaved) {
+                // KIỂM TRA SESSION STORAGE TRƯỚC KHI LƯU
+                if (sessionStorage.getItem(currentSessionKey) === 'true') {
                     console.log("Lịch sử ván chơi này đã được lưu. Bỏ qua lưu GitHub.");
                     return; // Ngăn chặn việc lưu trùng lặp
                 }
@@ -391,8 +392,8 @@
                     }
 
                     console.log("Lịch sử trò chơi đã được lưu thành công lên GitHub!");
-                    // ĐẶT CỜ BÁO HIỆU LƯU THÀNH CÔNG VÀO LOCAL STORAGE (THÔNG QUA STATE)
-                    setIsGameSaved(true);
+                    // ĐẶT CỜ BÁO HIỆU LƯU THÀNH CÔNG VÀO SESSION STORAGE
+                    sessionStorage.setItem(currentSessionKey, 'true');
                     
                     // Cập nhật SHA mới
                     const result = await response.json();
@@ -402,8 +403,8 @@
                     console.error("LỖI CẤP CAO khi lưu lịch sử lên GitHub:", error);
                     // Không đặt cờ nếu lưu thất bại
                 }
-            // *** CẬP NHẬT: Thêm startTime, isGameSaved, setIsGameSaved vào dependency array ***
-            }, [getAndSetSha, startTime, isGameSaved, setIsGameSaved]); 
+            // *** CẬP NHẬT: Thêm startTime vào dependency array ***
+            }, [getAndSetSha, currentSessionKey, startTime]); 
             
             // Kích hoạt việc lưu khi chuyển sang Game Over
             useEffect(() => {
@@ -412,7 +413,6 @@
                     saveHistoryToGithub(sortedScores);
                 }
             }, [gameState, sortedScores, saveHistoryToGithub, history.length]); 
-        // *** KẾT THÚC CẬP NHẬT ***
         };
 
         // --- 2. Component Con: Modal (Thay thế alert/confirm) ---
@@ -463,10 +463,6 @@
             // *** THÊM MỚI: State cho startTime ***
             const [startTime, setStartTime] = useLocalStorageState('startTime', null); 
             
-            // *** THÊM MỚI: State cho cờ chống trùng lặp GitHub (LocalStorage) ***
-            const [isGameSaved, setIsGameSaved] = useLocalStorageState('isGameSaved', false);
-            // *** KẾT THÚC THÊM MỚI ***
-
             const [showHistory, setShowHistory] = useState(false);
             const [showGameOverHistory, setShowGameOverHistory] = useState(false);
             const [isScoringMode, setIsScoringMode] = useState(false);
@@ -490,9 +486,8 @@
                 return [...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore);
             }, [unsortedPlayerScores]);
 
-            // *** CẬP NHẬT: Kích hoạt Hook lưu lịch sử GitHub (Thêm 'startTime', 'isGameSaved', 'setIsGameSaved') ***
-            useGitHubHistory(sortedScores, gameState, history, startTime, isGameSaved, setIsGameSaved); 
-            // *** KẾT THÚC CẬP NHẬT ***
+            // *** CẬP NHẬT: Kích hoạt Hook lưu lịch sử GitHub (Thêm 'startTime') ***
+            useGitHubHistory(sortedScores, gameState, history, startTime); 
 
 
             // --- Logic Audio: Phát âm thanh đọc điểm VÁN MỚI ---
@@ -592,13 +587,12 @@
                 setRoundScoreInputs({});
                 setModal({ isOpen: false, type: null, data: null });
                 addToQueue(['hoantac']); 
-                // BỎ: sessionStorage.removeItem(`game_saved_${history.length}`); 
+                sessionStorage.removeItem(`game_saved_${history.length}`); 
 
                 // Nếu hoàn tác ván đầu tiên, phải reset startTime
                 if (isFirstRound) {
                     setStartTime(null);
                 }
-                // KHÔNG reset isGameSaved ở đây vì game vẫn còn
             };
             
             const handleUndo = () => {
@@ -622,13 +616,12 @@
                 // *** THÊM MỚI: Reset startTime ***
                 setStartTime(null); 
                 
-                // *** THÊM MỚI: Reset cờ isGameSaved ***
-                setIsGameSaved(false);
-                // *** KẾT THÚC THÊM MỚI ***
-                
                 localStorage.clear(); 
-                // BỎ: Object.keys(sessionStorage).forEach...
-                
+                Object.keys(sessionStorage).forEach(key => {
+                    if (key.startsWith('game_saved_')) {
+                        sessionStorage.removeItem(key);
+                    }
+                });
                 setModal({ isOpen: false, type: null, data: null });
             };
             

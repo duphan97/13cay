@@ -33,8 +33,7 @@
 </head>
 <body>
     <div id="root"></div>
-
-    <script type="text/babel">
+	<script type="text/babel">
         const { useState, useEffect, useMemo, useCallback } = React;
 
         // --- CẤU HÌNH GITHUB (ĐÃ CẬP NHẬT) ---
@@ -161,7 +160,13 @@
         // Helper cho hiển thị thời gian
         const formatSessionDate = (isoString) => {
             try {
+                // Thêm kiểm tra null/undefined
+                if (!isoString) return 'N/A'; 
+                
                 const date = new Date(isoString);
+                // Kiểm tra ngày không hợp lệ
+                if (isNaN(date.getTime())) return 'N/A'; 
+                
                 return date.toLocaleDateString('vi-VN', {
                     year: 'numeric',
                     month: '2-digit',
@@ -334,9 +339,24 @@
                                             <span className={`text-sm font-bold px-3 py-1 rounded-full bg-green-100 text-green-800`}>
                                                 {playersCount} Người chơi
                                             </span>
-                                            <p className="text-xs text-gray-500 mt-1">
-                                                🗓️ <span className="font-medium">{formatSessionDate(session.timestamp)}</span>
+                                            
+                                            {/* === CẬP NHẬT THỜI GIAN START/END === */}
+                                            {/* Hiển thị thời gian bắt đầu (nếu có) */}
+                                            {session.startTime ? (
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    ⏳ Bắt đầu: <span className="font-medium">{formatSessionDate(session.startTime)}</span>
+                                                </p>
+                                            ) : (
+                                                <p className="text-xs text-gray-500 mt-1 italic">
+                                                    (Chưa rõ giờ bắt đầu)
+                                                </p>
+                                            )}
+                                            
+                                            {/* Hiển thị thời gian kết thúc (Ưu tiên endTime, fallback về timestamp nếu không có) */}
+                                            <p className={`text-xs text-gray-500 ${session.startTime ? 'mt-0.5' : 'mt-1'}`}>
+                                                🗓️ Kết thúc: <span className="font-medium">{formatSessionDate(session.endTime || session.timestamp)}</span>
                                             </p>
+                                            {/* === KẾT THÚC CẬP NHẬT THỜI GIAN === */}
                                         </div>
                                     </div>
                                     

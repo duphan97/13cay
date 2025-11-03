@@ -98,7 +98,7 @@
             return name
                 .toLowerCase()
                 .normalize("NFD")
-                .replace(/[\u00c0-\u036f]/g, "") // bỏ dấu
+                .replace(/[\u0300-\u036f]/g, "") // bỏ dấu
                 .replace(/đ/g, 'd')             // đổi đ -> d
                 .replace(/\s+/g, '');           // bỏ khoảng trắng
         };

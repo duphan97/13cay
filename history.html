@@ -365,20 +365,41 @@
                                         {
                                             sortedGameResults
                                                 .map(p => (
+                                                // === CẬP NHẬT: THÊM TỔNG ĐIỂM ===
                                                 <div key={p.name} className="flex justify-between items-center">
                                                     
+                                                    {/* Tên Người Chơi */}
                                                     <div className="font-semibold text-gray-800 text-base flex-grow overflow-hidden text-ellipsis whitespace-nowrap">
                                                         {p.name}
                                                     </div>
                                                     
-                                                    {/* CỘT 2: RANK cuối (Sử dụng CSS rank-count để căn chỉnh) */}
-                                                    <span className={`rank-count text-base font-bold ${p.rank === 1 ? 'text-green-600' : p.rank === 4 ? 'text-red-600' : 'text-gray-700'}`}>
-                                                        Hạng {p.rank}
-                                                    </span>
+                                                    {/* Nhóm Điểm & Hạng */}
+                                                    <div className="flex items-center space-x-4">
+                                                        
+                                                        {/* BỔ SUNG: TỔNG ĐIỂM */}
+                                                        {/* Hiển thị nếu totalScore là một con số (hỗ trợ dữ liệu cũ không có) */}
+                                                        {typeof p.totalScore === 'number' && !isNaN(p.totalScore) && (
+                                                            <span className={`text-lg font-bold font-mono ${p.totalScore >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                {/* Hiển thị dấu + cho điểm dương */}
+                                                                {p.totalScore > 0 ? `+${p.totalScore}` : p.totalScore}
+                                                            </span>
+                                                        )}
+                                                        
+                                                        {/* Hạng */}
+                                                        <span className={`text-base font-bold w-20 text-right ${
+                                                                    p.rank === 1 ? 'text-green-600' 
+                                                                    : (p.rank === 4 || p.rank === playersCount) ? 'text-red-600' // Tô đỏ hạng 4 hoặc hạng bét
+                                                                    : 'text-gray-700'
+                                                                }`}>
+                                                            Hạng {p.rank}
+                                                        </span>
+                                                    </div>
                                                 </div>
+                                                // === KẾT THÚC CẬP NHẬT ===
                                             ))
                                         }
                                     </div>
+                                -----------------
                                 </div>
                             );
                         })}

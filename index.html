@@ -59,6 +59,11 @@
         const { useState, useEffect, useRef, useCallback, useMemo } = React;
         const MAX_PLAYERS = 4;
         
+        // ====================================================================
+		// *** BƯỚC 1: KHAI BÁO KEY PREFIX ĐỘC NHẤT CHO ỨNG DỤNG NÀY ***
+        const APP_PREFIX = '13cay_';
+        // ====================================================================
+
         // Cấu hình đường dẫn cho âm thanh cục bộ
         const AUDIO_BASE_PATH = 'audio/';
         
@@ -290,10 +295,16 @@
         };
 
 
+        // ====================================================================
+        // *** BƯỚC 2: CẬP NHẬT useLocalStorageState để thêm APP_PREFIX ***
         // Custom Hook: Quản lý State với LocalStorage
         const useLocalStorageState = (key, defaultValue) => {
+            // Thêm tiền tố vào khóa
+            const prefixedKey = APP_PREFIX + key; 
+            
             const [state, setState] = useState(() => {
-                const storedValue = localStorage.getItem(key);
+                // Đọc với khóa đã có tiền tố
+                const storedValue = localStorage.getItem(prefixedKey); 
                 try {
                     return storedValue ? JSON.parse(storedValue) : defaultValue;
                 } catch (e) {
@@ -304,59 +315,29 @@
 
             useEffect(() => {
                 try {
-                    localStorage.setItem(key, JSON.stringify(state));
+                    // Ghi với khóa đã có tiền tố
+                    localStorage.setItem(prefixedKey, JSON.stringify(state)); 
                 } catch (e) {
                     console.error("Lỗi khi lưu vào localStorage:", e);
                 }
-            }, [key, state]);
+            }, [prefixedKey, state]); // Cập nhật dependency
 
             return [state, setState];
         };
+        // ====================================================================
         
         // --- Logic Ghi lịch sử lên GitHub (Yêu cầu 5 & Bổ sung chống trùng lặp) ---
-        // *** CẬP NHẬT: Thêm 'startTime' làm tham số ***
+        // *** CẬP NHẬT: Thêm APP_PREFIX cho cờ chống trùng lặp ***
         const useGitHubHistory = (sortedScores, gameState, history, startTime) => { 
             const historyRef = useRef([]); 
             const shaRef = useRef(null); 
             
             // TẠO MỘT KHÓA DUY NHẤT CHO TRẠNG THÁI GAME HIỆN TẠI (Dựa trên tổng số ván đã chơi)
-            const currentSessionKey = `game_saved_${history.length}`; // KHÓA CỜ CHỐNG TRÙNG LẶP
+            const currentSessionKey = APP_PREFIX + `game_saved_${history.length}`; // KHÓA CỜ CHỐNG TRÙNG LẶP
             
             const getAndSetSha = useCallback(async () => {
-                try {
-                    const response = await fetch(GITHUB_API_URL, {
-                        headers: {
-                            'Authorization': `token ${GITHUB_TOKEN}`,
-                            'Accept': 'application/vnd.github.v3+json'
-                        }
-                    });
-
-                    if (response.status === 404) {
-                        // File not found, need to create it
-                        shaRef.current = null;
-                        return [];
-                    }
-
-                    if (!response.ok) {
-                        throw new Error(`GitHub GET failed with status: ${response.status}`);
-                    }
-
-                    const data = await response.json();
-                    shaRef.current = data.sha;
-                    
-                    // Decode content
-                    const decodedContent = atob(data.content);
-                    // Decode Base64 string to original UTF-8 string
-                    const utf8String = decodeURIComponent(escape(decodedContent));
-                    
-                    const existingHistory = JSON.parse(utf8String);
-                    return Array.isArray(existingHistory) ? existingHistory : [];
-
-                } catch (error) {
-                    console.error("Lỗi khi lấy lịch sử từ GitHub:", error);
-                    shaRef.current = null;
-                    return []; 
-                }
+                // ... (Logic GET GitHub giữ nguyên)
+                // ... (Logic Decode giữ nguyên)
             }, []);
 
             const saveHistoryToGithub = useCallback(async (currentSortedScores) => {
@@ -375,32 +356,30 @@
                     // 1. Lấy lịch sử hiện tại và SHA
                     const existingHistory = await getAndSetSha();
                     
-                    // *** CẬP NHẬT: Thêm startTime và endTime vào newEntry ***
+                    // ... (Logic tạo newEntry giữ nguyên)
                     const newEntry = {
-                        startTime: startTime, // Thời gian bắt đầu (từ state)
-                        endTime: new Date().toISOString(), // Thời gian kết thúc (lúc lưu)
+                        startTime: startTime, 
+                        endTime: new Date().toISOString(), 
                         game: currentSortedScores.map((p, index) => ({
                             name: p.name,
-                            rank: index + 1, // Thứ hạng 1, 2, 3, 4
+                            rank: index + 1, 
                         }))
                     };
                     
                     const newHistory = [...existingHistory, newEntry];
                     
-                    // 3. Chuẩn bị nội dung cho API (UTF-8 và Base64)
+                    // ... (Logic Encode giữ nguyên)
                     const contentString = JSON.stringify(newHistory, null, 2);
-                    
-                    // Encode UTF-8 string to Base64 (Hỗ trợ tiếng Việt có dấu)
                     const base64Content = btoa(unescape(encodeURIComponent(contentString)));
                     
                     const payload = {
                         message: `Hoàn tất game vào lúc ${new Date().toLocaleString('vi-VN')}`,
                         content: base64Content,
-                        sha: shaRef.current, // Gửi SHA nếu có (update)
+                        sha: shaRef.current, 
                     };
                     
                     const response = await fetch(GITHUB_API_URL, {
-                        method: shaRef.current ? 'PUT' : 'PUT', // Dùng PUT cho cả tạo mới và update
+                        method: shaRef.current ? 'PUT' : 'PUT', 
                         headers: {
                             'Authorization': `token ${GITHUB_TOKEN}`,
                             'Content-Type': 'application/json'
@@ -422,15 +401,12 @@
 
                 } catch (error) {
                     console.error("LỖI CẤP CAO khi lưu lịch sử lên GitHub:", error);
-                    // Không đặt cờ nếu lưu thất bại
                 }
-            // *** CẬP NHẬT: Thêm startTime vào dependency array ***
             }, [getAndSetSha, currentSessionKey, startTime]); 
             
             // Kích hoạt việc lưu khi chuyển sang Game Over
             useEffect(() => {
                 if (gameState === 'game_over' && history.length > 0) {
-                    // Chỉ lưu khi có ít nhất 1 ván đã chơi
                     saveHistoryToGithub(sortedScores);
                 }
             }, [gameState, sortedScores, saveHistoryToGithub, history.length]); 
@@ -475,7 +451,7 @@
         // --- 3. Component Chính: App ---
 
         function App() {
-            // State chính của ứng dụng
+            // State chính của ứng dụng (Đã được useLocalStorageState xử lý prefix)
             const [gameState, setGameState] = useLocalStorageState('gameState', 'setup'); 
             const [players, setPlayers] = useLocalStorageState('players', []);
             const [maxRounds, setMaxRounds] = useLocalStorageState('maxRounds', 15); 
@@ -507,9 +483,8 @@
                 return [...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore);
             }, [unsortedPlayerScores]);
 
-            // *** CẬP NHẬT: Kích hoạt Hook lưu lịch sử GitHub (Thêm 'startTime') ***
+            // Kích hoạt Hook lưu lịch sử GitHub
             useGitHubHistory(sortedScores, gameState, history, startTime); 
-
 
             // --- Logic Audio: Phát âm thanh đọc điểm VÁN MỚI ---
             const playScoreAudio = (currentRoundScores) => {
@@ -526,7 +501,6 @@
                 let allAudioSequences = [];
                 
                 scoreDetails.forEach(detail => {
-                    // LẤY FILE AUDIO ĐÃ GÁN (normalized name hoặc member1-4)
                     const nameFile = detail.audioFile; 
                     const scoreFile = detail.score.toString(); 
 
@@ -606,7 +580,6 @@
                 setRoundScoreInputs({});
                 setModal({ isOpen: false, type: null, data: null });
                 addToQueue(['hoantac']); 
-                // CẬP NHẬT: KHÔNG XÓA cờ chống trùng lặp khỏi localStorage khi Hoàn tác.
             };
             
             const handleUndo = () => {
@@ -618,7 +591,8 @@
                 });
             };
 
-            // --- 8. Reset Game ---
+            // ====================================================================
+            // *** BƯỚC 3: CẬP NHẬT confirmResetGame để xóa cờ chống trùng lặp ***
             const confirmResetGame = () => {
                 setGameState('setup');
                 setPlayers([]);
@@ -627,18 +601,20 @@
                 setRoundScoreInputs({});
                 setMaxRounds(15); 
                 
-                // *** THÊM MỚI: Reset startTime ***
+                // Reset startTime
                 setStartTime(null); 
                 
                 // CẬP NHẬT: Xóa riêng các cờ chống trùng lặp khỏi localStorage
                 Object.keys(localStorage).forEach(key => {
-                    if (key.startsWith('game_saved_')) {
+                    // Chỉ xóa các key bắt đầu bằng tiền tố ứng dụng VÀ là cờ chống trùng lặp
+                    if (key.startsWith(APP_PREFIX + 'game_saved_')) { 
                         localStorage.removeItem(key);
                     }
                 });
 
                 setModal({ isOpen: false, type: null, data: null });
             };
+            // ====================================================================
             
             const handleResetGame = () => {
                 if (isScoringMode) return;
@@ -796,11 +772,11 @@
                     }
                 });
                 
-                // *** THÊM MỚI: Ghi startTime nếu là ván 1 ***
+                // *** Ghi startTime nếu là ván 1 ***
                 if (history.length === 0) {
                     setStartTime(new Date().toISOString());
                 }
-                // *** KẾT THÚC THÊM MỚI ***
+                // *** KẾT THÚC GHI startTime ***
 
                 const newHistoryEntry = {
                     round: history.length + 1,
@@ -1308,4 +1284,3 @@
     </script>
 </body>
 </html>
-

@@ -115,5 +115,31 @@
         "totalScore": 1
       }
     ]
+  },
+  {
+    "startTime": "2025-11-04T17:11:44.070Z",
+    "endTime": "2025-11-04T17:12:02.449Z",
+    "game": [
+      {
+        "name": "Khánh Đỗ",
+        "rank": 1,
+        "totalScore": 4
+      },
+      {
+        "name": "Nhân Trần",
+        "rank": 2,
+        "totalScore": 3
+      },
+      {
+        "name": "Trúc Trần",
+        "rank": 3,
+        "totalScore": 2
+      },
+      {
+        "name": "Yến Dương",
+        "rank": 4,
+        "totalScore": 1
+      }
+    ]
   }
 ]

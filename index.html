@@ -20,26 +20,6 @@
                     },
                     boxShadow: {
                         '3xl': '0 35px 60px -15px rgba(0, 0, 0, 0.3)',
-                    },
-                    keyframes: {
-                        'fade-in': {
-                            '0%': { opacity: '0' },
-                            '100%': { opacity: '1' },
-                        },
-                        'bounce-in': {
-                            '0%': { transform: 'scale(0.9)', opacity: '0' },
-                            '60%': { transform: 'scale(1.05)', opacity: '1' },
-                            '100%': { transform: 'scale(1)' },
-                        },
-                        'pulse-strong': {
-                            '0%, 100%': { transform: 'scale(1)', filter: 'brightness(1)' },
-                            '50%': { transform: 'scale(1.05)', filter: 'brightness(1.1)' },
-                        }
-                    },
-                    animation: {
-                        'fade-in': 'fade-in 0.3s ease-out',
-                        'bounce-in': 'bounce-in 0.4s ease-out',
-                        'pulse-strong': 'pulse-strong 1.5s infinite',
                     }
                 }
             }
@@ -49,21 +29,48 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/react-use-localstorage-state/lib/index.umd.js"></script> 
     
+    <style>
+        /* Áp dụng Font Quicksand */
+        body {
+            font-family: 'Quicksand', sans-serif;
+        }
+        
+        @keyframes bounce-in {
+            0%, 20%, 40%, 60%, 80%, 100% {
+                transition-timing-function: cubic-bezier(0.215, 0.610, 0.355, 1.000);
+            }
+            0% { opacity: 0; transform: scale3d(.3, .3, .3); }
+            40% { transform: scale3d(1.1, 1.1, 1.1); }
+            80% { transform: scale3d(.97, .97, .97); }
+            100% { opacity: 1; transform: scale3d(1, 1, 1); }
+        }
+        .animate-bounce-in {
+            animation: bounce-in 0.8s;
+        }
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fade-in 0.3s ease-out;
+        }
+        @keyframes pulse-strong {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } /* Emerald 500 */
+            50% { opacity: 0.8; box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+        }
+        .animate-pulse-strong {
+            animation: pulse-strong 1.5s infinite;
+        }
+    </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-gray-50 min-h-screen">
     <div id="root"></div>
 
-	<script type="text/babel">
+    <script type="text/babel">
         const { useState, useEffect, useRef, useCallback, useMemo } = React;
         const MAX_PLAYERS = 4;
         
-        // ====================================================================
-		// *** BƯỚC 1: KHAI BÁO KEY PREFIX ĐỘC NHẤT CHO ỨNG DỤNG NÀY ***
-        const APP_PREFIX = '13cay_';
-        // ====================================================================
-
         // Cấu hình đường dẫn cho âm thanh cục bộ
         const AUDIO_BASE_PATH = 'audio/';
         
@@ -295,16 +302,10 @@
         };
 
 
-        // ====================================================================
-        // *** BƯỚC 2: CẬP NHẬT useLocalStorageState để thêm APP_PREFIX ***
         // Custom Hook: Quản lý State với LocalStorage
         const useLocalStorageState = (key, defaultValue) => {
-            // Thêm tiền tố vào khóa
-            const prefixedKey = APP_PREFIX + key; 
-            
             const [state, setState] = useState(() => {
-                // Đọc với khóa đã có tiền tố
-                const storedValue = localStorage.getItem(prefixedKey); 
+                const storedValue = localStorage.getItem(key);
                 try {
                     return storedValue ? JSON.parse(storedValue) : defaultValue;
                 } catch (e) {
@@ -315,34 +316,63 @@
 
             useEffect(() => {
                 try {
-                    // Ghi với khóa đã có tiền tố
-                    localStorage.setItem(prefixedKey, JSON.stringify(state)); 
+                    localStorage.setItem(key, JSON.stringify(state));
                 } catch (e) {
                     console.error("Lỗi khi lưu vào localStorage:", e);
                 }
-            }, [prefixedKey, state]); // Cập nhật dependency
+            }, [key, state]);
 
             return [state, setState];
         };
-        // ====================================================================
         
         // --- Logic Ghi lịch sử lên GitHub (Yêu cầu 5 & Bổ sung chống trùng lặp) ---
-        // *** CẬP NHẬT: Thêm APP_PREFIX cho cờ chống trùng lặp ***
-        const useGitHubHistory = (sortedScores, gameState, history, startTime) => { 
+        const useGitHubHistory = (sortedScores, gameState, history) => { 
             const historyRef = useRef([]); 
             const shaRef = useRef(null); 
             
             // TẠO MỘT KHÓA DUY NHẤT CHO TRẠNG THÁI GAME HIỆN TẠI (Dựa trên tổng số ván đã chơi)
-            const currentSessionKey = APP_PREFIX + `game_saved_${history.length}`; // KHÓA CỜ CHỐNG TRÙNG LẶP
+            const currentSessionKey = `game_saved_${history.length}`;
             
             const getAndSetSha = useCallback(async () => {
-                // ... (Logic GET GitHub giữ nguyên)
-                // ... (Logic Decode giữ nguyên)
+                try {
+                    const response = await fetch(GITHUB_API_URL, {
+                        headers: {
+                            'Authorization': `token ${GITHUB_TOKEN}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+
+                    if (response.status === 404) {
+                        // File not found, need to create it
+                        shaRef.current = null;
+                        return [];
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`GitHub GET failed with status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    shaRef.current = data.sha;
+                    
+                    // Decode content
+                    const decodedContent = atob(data.content);
+                    // Decode Base64 string to original UTF-8 string
+                    const utf8String = decodeURIComponent(escape(decodedContent));
+                    
+                    const existingHistory = JSON.parse(utf8String);
+                    return Array.isArray(existingHistory) ? existingHistory : [];
+
+                } catch (error) {
+                    console.error("Lỗi khi lấy lịch sử từ GitHub:", error);
+                    shaRef.current = null;
+                    return []; 
+                }
             }, []);
 
             const saveHistoryToGithub = useCallback(async (currentSortedScores) => {
-                // CẬP NHẬT: KIỂM TRA LOCAL STORAGE TRƯỚC KHI LƯU
-                if (localStorage.getItem(currentSessionKey) === 'true') {
+                // KIỂM TRA SESSION STORAGE TRƯỚC KHI LƯU
+                if (sessionStorage.getItem(currentSessionKey) === 'true') {
                     console.log("Lịch sử ván chơi này đã được lưu. Bỏ qua lưu GitHub.");
                     return; // Ngăn chặn việc lưu trùng lặp
                 }
@@ -356,30 +386,31 @@
                     // 1. Lấy lịch sử hiện tại và SHA
                     const existingHistory = await getAndSetSha();
                     
-                    // ... (Logic tạo newEntry giữ nguyên)
+                    // 2. Tạo đối tượng lịch sử mới
                     const newEntry = {
-                        startTime: startTime, 
-                        endTime: new Date().toISOString(), 
+                        timestamp: new Date().toISOString(),
                         game: currentSortedScores.map((p, index) => ({
                             name: p.name,
-                            rank: index + 1, 
+                            rank: index + 1, // Thứ hạng 1, 2, 3, 4
                         }))
                     };
                     
                     const newHistory = [...existingHistory, newEntry];
                     
-                    // ... (Logic Encode giữ nguyên)
+                    // 3. Chuẩn bị nội dung cho API (UTF-8 và Base64)
                     const contentString = JSON.stringify(newHistory, null, 2);
+                    
+                    // Encode UTF-8 string to Base64 (Hỗ trợ tiếng Việt có dấu)
                     const base64Content = btoa(unescape(encodeURIComponent(contentString)));
                     
                     const payload = {
                         message: `Hoàn tất game vào lúc ${new Date().toLocaleString('vi-VN')}`,
                         content: base64Content,
-                        sha: shaRef.current, 
+                        sha: shaRef.current, // Gửi SHA nếu có (update)
                     };
                     
                     const response = await fetch(GITHUB_API_URL, {
-                        method: shaRef.current ? 'PUT' : 'PUT', 
+                        method: shaRef.current ? 'PUT' : 'PUT', // Dùng PUT cho cả tạo mới và update
                         headers: {
                             'Authorization': `token ${GITHUB_TOKEN}`,
                             'Content-Type': 'application/json'
@@ -392,8 +423,8 @@
                     }
 
                     console.log("Lịch sử trò chơi đã được lưu thành công lên GitHub!");
-                    // CẬP NHẬT: ĐẶT CỜ BÁO HIỆU LƯU THÀNH CÔNG VÀO LOCAL STORAGE
-                    localStorage.setItem(currentSessionKey, 'true');
+                    // ĐẶT CỜ BÁO HIỆU LƯU THÀNH CÔNG VÀO SESSION STORAGE
+                    sessionStorage.setItem(currentSessionKey, 'true');
                     
                     // Cập nhật SHA mới
                     const result = await response.json();
@@ -401,12 +432,14 @@
 
                 } catch (error) {
                     console.error("LỖI CẤP CAO khi lưu lịch sử lên GitHub:", error);
+                    // Không đặt cờ nếu lưu thất bại
                 }
-            }, [getAndSetSha, currentSessionKey, startTime]); 
+            }, [getAndSetSha, currentSessionKey]);
             
             // Kích hoạt việc lưu khi chuyển sang Game Over
             useEffect(() => {
                 if (gameState === 'game_over' && history.length > 0) {
+                    // Chỉ lưu khi có ít nhất 1 ván đã chơi
                     saveHistoryToGithub(sortedScores);
                 }
             }, [gameState, sortedScores, saveHistoryToGithub, history.length]); 
@@ -451,15 +484,11 @@
         // --- 3. Component Chính: App ---
 
         function App() {
-            // State chính của ứng dụng (Đã được useLocalStorageState xử lý prefix)
+            // State chính của ứng dụng
             const [gameState, setGameState] = useLocalStorageState('gameState', 'setup'); 
             const [players, setPlayers] = useLocalStorageState('players', []);
             const [maxRounds, setMaxRounds] = useLocalStorageState('maxRounds', 15); 
             const [history, setHistory] = useLocalStorageState('history', []);
-            
-            // *** THÊM MỚI: State cho startTime ***
-            const [startTime, setStartTime] = useLocalStorageState('startTime', null); 
-            
             const [showHistory, setShowHistory] = useState(false);
             const [showGameOverHistory, setShowGameOverHistory] = useState(false);
             const [isScoringMode, setIsScoringMode] = useState(false);
@@ -483,8 +512,9 @@
                 return [...unsortedPlayerScores].sort((a, b) => b.totalScore - a.totalScore);
             }, [unsortedPlayerScores]);
 
-            // Kích hoạt Hook lưu lịch sử GitHub
-            useGitHubHistory(sortedScores, gameState, history, startTime); 
+            // Kích hoạt Hook lưu lịch sử GitHub (Đã thêm biến history)
+            useGitHubHistory(sortedScores, gameState, history); 
+
 
             // --- Logic Audio: Phát âm thanh đọc điểm VÁN MỚI ---
             const playScoreAudio = (currentRoundScores) => {
@@ -501,6 +531,7 @@
                 let allAudioSequences = [];
                 
                 scoreDetails.forEach(detail => {
+                    // LẤY FILE AUDIO ĐÃ GÁN (normalized name hoặc member1-4)
                     const nameFile = detail.audioFile; 
                     const scoreFile = detail.score.toString(); 
 
@@ -580,6 +611,7 @@
                 setRoundScoreInputs({});
                 setModal({ isOpen: false, type: null, data: null });
                 addToQueue(['hoantac']); 
+                sessionStorage.removeItem(`game_saved_${history.length}`); 
             };
             
             const handleUndo = () => {
@@ -591,8 +623,7 @@
                 });
             };
 
-            // ====================================================================
-            // *** BƯỚC 3: CẬP NHẬT confirmResetGame để xóa cờ chống trùng lặp ***
+            // --- 8. Reset Game ---
             const confirmResetGame = () => {
                 setGameState('setup');
                 setPlayers([]);
@@ -600,21 +631,14 @@
                 setIsScoringMode(false);
                 setRoundScoreInputs({});
                 setMaxRounds(15); 
-                
-                // Reset startTime
-                setStartTime(null); 
-                
-                // CẬP NHẬT: Xóa riêng các cờ chống trùng lặp khỏi localStorage
-                Object.keys(localStorage).forEach(key => {
-                    // Chỉ xóa các key bắt đầu bằng tiền tố ứng dụng VÀ là cờ chống trùng lặp
-                    if (key.startsWith(APP_PREFIX + 'game_saved_')) { 
-                        localStorage.removeItem(key);
+                localStorage.clear(); 
+                Object.keys(sessionStorage).forEach(key => {
+                    if (key.startsWith('game_saved_')) {
+                        sessionStorage.removeItem(key);
                     }
                 });
-
                 setModal({ isOpen: false, type: null, data: null });
             };
-            // ====================================================================
             
             const handleResetGame = () => {
                 if (isScoringMode) return;
@@ -771,12 +795,6 @@
                         newRoundScores[p.id] = parseInt(score); 
                     }
                 });
-                
-                // *** Ghi startTime nếu là ván 1 ***
-                if (history.length === 0) {
-                    setStartTime(new Date().toISOString());
-                }
-                // *** KẾT THÚC GHI startTime ***
 
                 const newHistoryEntry = {
                     round: history.length + 1,

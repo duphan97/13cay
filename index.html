@@ -71,12 +71,14 @@
             "Dũng Hoàng", 
             "Dũng Nguyễn", 
             "Định Ngô", 
-            "Đông Lê", 
+            "Đông Lê",
+            "Dự Phan", // CẬP NHẬT 3: Thêm người chơi
             "Khánh Đỗ", 
             "Minh Anh", 
             "Nhân Trần", 
             "Quý Huỳnh", 
-            "Trúc Trần"
+            "Trúc Trần",
+            "Yến Dương" // CẬP NHẬT 3: Thêm người chơi
         ];
         const PRESET_ROUNDS = [15, 21, 31];
         
@@ -92,6 +94,9 @@
 
 
         // --- 1. Custom Hooks & Utilities ---
+
+        // CẬP NHẬT 2: Thêm prefix cho LocalStorage
+        const APP_PREFIX = '13cayApp_';
 
         // Hàm chuẩn hóa tên người chơi thành tên file không dấu, không khoảng trắng, chữ thường
         const normalizeName = (name) => {
@@ -291,9 +296,12 @@
 
 
         // Custom Hook: Quản lý State với LocalStorage
+        // CẬP NHẬT 2: Sửa hook để tự động dùng APP_PREFIX
         const useLocalStorageState = (key, defaultValue) => {
+            const prefixedKey = APP_PREFIX + key; // Áp dụng prefix
+
             const [state, setState] = useState(() => {
-                const storedValue = localStorage.getItem(key);
+                const storedValue = localStorage.getItem(prefixedKey); // Đọc với prefix
                 try {
                     return storedValue ? JSON.parse(storedValue) : defaultValue;
                 } catch (e) {
@@ -304,11 +312,11 @@
 
             useEffect(() => {
                 try {
-                    localStorage.setItem(key, JSON.stringify(state));
+                    localStorage.setItem(prefixedKey, JSON.stringify(state)); // Ghi với prefix
                 } catch (e) {
                     console.error("Lỗi khi lưu vào localStorage:", e);
                 }
-            }, [key, state]);
+            }, [prefixedKey, state]); // Dùng prefixedKey làm dependency
 
             return [state, setState];
         };
@@ -360,8 +368,10 @@
             }, []);
 
             const saveHistoryToGithub = useCallback(async (currentSortedScores) => {
-                // CẬP NHẬT: KIỂM TRA LOCAL STORAGE TRƯỚC KHI LƯU
-                if (localStorage.getItem(currentSessionKey) === 'true') {
+                // CẬP NHẬT 1 & 2: KIỂM TRA LOCAL STORAGE (VỚI PREFIX) TRƯỚC KHI LƯU
+                const prefixedSessionKey = APP_PREFIX + currentSessionKey; // Thêm prefix cho cờ
+                
+                if (localStorage.getItem(prefixedSessionKey) === 'true') { // <--- CẬP NHẬT
                     console.log("Lịch sử ván chơi này đã được lưu. Bỏ qua lưu GitHub.");
                     return; // Ngăn chặn việc lưu trùng lặp
                 }
@@ -375,13 +385,14 @@
                     // 1. Lấy lịch sử hiện tại và SHA
                     const existingHistory = await getAndSetSha();
                     
-                    // *** CẬP NHẬT: Thêm startTime và endTime vào newEntry ***
+                    // *** CẬP NHẬT 4: Thêm startTime, endTime và totalScore vào newEntry ***
                     const newEntry = {
                         startTime: startTime, // Thời gian bắt đầu (từ state)
                         endTime: new Date().toISOString(), // Thời gian kết thúc (lúc lưu)
                         game: currentSortedScores.map((p, index) => ({
                             name: p.name,
                             rank: index + 1, // Thứ hạng 1, 2, 3, 4
+                            totalScore: p.totalScore // <--- THÊM TỔNG ĐIỂM
                         }))
                     };
                     
@@ -413,8 +424,8 @@
                     }
 
                     console.log("Lịch sử trò chơi đã được lưu thành công lên GitHub!");
-                    // CẬP NHẬT: ĐẶT CỜ BÁO HIỆU LƯU THÀNH CÔNG VÀO LOCAL STORAGE
-                    localStorage.setItem(currentSessionKey, 'true');
+                    // CẬP NHẬT 1 & 2: ĐẶT CỜ BÁO HIỆU LƯU THÀNH CÔNG VÀO LOCAL STORAGE (VỚI PREFIX)
+                    localStorage.setItem(prefixedSessionKey, 'true'); // <--- CẬP NHẬT
                     
                     // Cập nhật SHA mới
                     const result = await response.json();
@@ -606,7 +617,7 @@
                 setRoundScoreInputs({});
                 setModal({ isOpen: false, type: null, data: null });
                 addToQueue(['hoantac']); 
-                // CẬP NHẬT: KHÔNG XÓA cờ chống trùng lặp khỏi localStorage khi Hoàn tác.
+                // CẬP NHẬT 1: KHÔNG XÓA cờ chống trùng lặp khỏi localStorage khi Hoàn tác.
             };
             
             const handleUndo = () => {
@@ -630,9 +641,9 @@
                 // *** THÊM MỚI: Reset startTime ***
                 setStartTime(null); 
                 
-                // CẬP NHẬT: Xóa riêng các cờ chống trùng lặp khỏi localStorage
+                // CẬP NHẬT 2: Xóa TẤT CẢ dữ liệu localStorage CÓ PREFIX của app này
                 Object.keys(localStorage).forEach(key => {
-                    if (key.startsWith('game_saved_')) {
+                    if (key.startsWith(APP_PREFIX)) {
                         localStorage.removeItem(key);
                     }
                 });
@@ -1308,4 +1319,3 @@
     </script>
 </body>
 </html>
-

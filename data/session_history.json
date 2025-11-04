@@ -89,5 +89,31 @@
         "totalScore": 1
       }
     ]
+  },
+  {
+    "startTime": "2025-11-04T17:10:30.455Z",
+    "endTime": "2025-11-04T17:10:45.781Z",
+    "game": [
+      {
+        "name": "Dũng Nguyễn",
+        "rank": 1,
+        "totalScore": 4
+      },
+      {
+        "name": "Khánh Đỗ",
+        "rank": 2,
+        "totalScore": 3
+      },
+      {
+        "name": "Đông Lê",
+        "rank": 3,
+        "totalScore": 2
+      },
+      {
+        "name": "Bình Đặng",
+        "rank": 4,
+        "totalScore": 1
+      }
+    ]
   }
 ]

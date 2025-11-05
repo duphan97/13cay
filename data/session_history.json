@@ -1,2 +1,28 @@
 [
+  {
+    "startTime": "2025-11-05T05:17:01.291Z",
+    "endTime": "2025-11-05T06:02:56.001Z",
+    "game": [
+      {
+        "name": "Quý Huỳnh",
+        "rank": 1,
+        "totalScore": 41
+      },
+      {
+        "name": "Định Ngô",
+        "rank": 2,
+        "totalScore": 37
+      },
+      {
+        "name": "Đông Lê",
+        "rank": 3,
+        "totalScore": 27
+      },
+      {
+        "name": "Dũng Nguyễn",
+        "rank": 4,
+        "totalScore": 21
+      }
+    ]
+  }
 ]

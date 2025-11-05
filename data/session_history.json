@@ -1,28 +1,2 @@
 [
-  {
-    "startTime": "2025-11-05T01:25:57.534Z",
-    "endTime": "2025-11-05T01:26:22.198Z",
-    "game": [
-      {
-        "name": "Khánh Đỗ",
-        "rank": 1,
-        "totalScore": 11
-      },
-      {
-        "name": "Đông Lê",
-        "rank": 2,
-        "totalScore": 10
-      },
-      {
-        "name": "Dũng Nguyễn",
-        "rank": 3,
-        "totalScore": 6
-      },
-      {
-        "name": "Bình Đặng",
-        "rank": 4,
-        "totalScore": 3
-      }
-    ]
-  }
 ]

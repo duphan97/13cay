@@ -62,7 +62,6 @@
             });
 
             if (response.status === 404) {
-                // Trả về mảng rỗng nếu file không tồn tại (404)
                 return []; 
             }
             if (!response.ok) {
@@ -78,7 +77,6 @@
                 sessionsData = JSON.parse(jsonString);
             } catch (e) {
                 console.error("Lỗi Decode/Parse JSON:", e);
-                // Trả về mảng rỗng nếu dữ liệu bị lỗi
                 return []; 
             }
             
@@ -89,21 +87,17 @@
         const calculateAllTimeData = (sessions) => {
             if (!sessions || sessions.length === 0) return { scoreboard: [] };
             
-            // { playerName: { 1: 0, 2: 0, 3: 0, 4: 0, totalGames: 0 } }
             const rankCountsMap = {}; 
 
             sessions.forEach(session => {
-                // SỬ DỤNG TRƯỜNG 'game' TRONG CẤU TRÚC MỚI
                 if (Array.isArray(session.game)) { 
                     
                     session.game.forEach(player => {
                         const rank = player.rank;
                         const playerName = player.name;
                         
-                        // Initialize player data
                         rankCountsMap[playerName] = rankCountsMap[playerName] || { 1: 0, 2: 0, 3: 0, 4: 0, totalGames: 0 };
                         
-                        // Aggregate Rank Counts (Chỉ quan tâm 4 rank đầu)
                         if (rank >= 1 && rank <= 4) {
                             rankCountsMap[playerName][rank]++;
                         }
@@ -113,7 +107,6 @@
                 }
             });
 
-            // Combine into a Scoreboard array
             const scoreboard = Object.keys(rankCountsMap).map(name => ({
                 name,
                 ranks: rankCountsMap[name],
@@ -122,15 +115,10 @@
             
             // Logic sắp xếp: Ưu tiên Rank 1 > Rank 2 > Rank 3. Rank 4 (ít lần hơn là tốt hơn).
             scoreboard.sort((a, b) => {
-                // 1. Rank 1: Cao hơn thì thắng
                 if (b.ranks['1'] !== a.ranks['1']) return b.ranks['1'] - a.ranks['1'];
-                // 2. Rank 2: Cao hơn thì thắng
                 if (b.ranks['2'] !== a.ranks['2']) return b.ranks['2'] - a.ranks['2'];
-                // 3. Rank 3: Cao hơn thì thắng
                 if (b.ranks['3'] !== a.ranks['3']) return b.ranks['3'] - a.ranks['3'];
-                // 4. Rank 4: Thấp hơn thì thắng (ít lần bét hơn thì tốt hơn)
                 if (a.ranks['4'] !== b.ranks['4']) return a.ranks['4'] - b.ranks['4'];
-                // 5. Total Games: Chơi nhiều hơn nếu điểm bằng nhau.
                 return b.totalGames - a.totalGames; 
             });
 
@@ -138,32 +126,12 @@
         };
         // --- END HÀM TÍNH TOÁN TỔNG HỢP ---
 
-        
-        // Helper cho hiển thị thời gian
-        const formatSessionDate = (isoString) => {
-            try {
-                if (!isoString) return 'N/A'; 
-                const date = new Date(isoString);
-                if (isNaN(date.getTime())) return 'N/A'; 
-                return date.toLocaleDateString('vi-VN', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                });
-            } catch {
-                return isoString ? isoString.substring(0, 10) : 'N/A';
-            }
-        };
-
 
         function HistoryTLMNApp() {
             const [sessions, setSessions] = useState(null);
             const [loading, setLoading] = useState(true); 
             const [dataError, setDataError] = useState(null); 
             
-            // Tự động tải dữ liệu khi component được mount
             useEffect(() => {
                 const loadHistory = async () => {
                     setLoading(true);
@@ -202,7 +170,7 @@
                     <div className="text-center p-8 bg-red-100 border border-red-400 rounded-xl shadow-lg">
                         <p className="font-bold text-red-700 text-lg">⚠️ Lỗi Tải Dữ Liệu</p>
                         <p className="text-base text-gray-600 mt-2">{dataError}</p>
-                        <a href="index.html" className="inline-block bg-blue-500 text-white px-5 py-2 rounded-lg font-bold hover:bg-blue-600 transition mt-4 shadow-md">
+                        <a href="index.html" className="inline-block bg-indigo-500 text-white px-5 py-2 rounded-lg font-bold hover:bg-indigo-600 transition mt-4 shadow-md">
                             ↩️ Quay lại Game
                         </a>
                     </div>
@@ -214,21 +182,22 @@
                     <div className="text-center p-8 bg-yellow-100 border border-yellow-400 rounded-xl shadow-lg">
                         <p className="font-bold text-yellow-700 text-lg">📜 Chưa Có Dữ Liệu Lịch Sử</p>
                         <p className="text-base text-gray-600 mt-2">Hãy hoàn thành một phiên chơi để hệ thống tự động lưu.</p>
-                        <a href="index.html" className="inline-block bg-blue-500 text-white px-5 py-2 rounded-lg font-bold hover:bg-blue-600 transition mt-4 shadow-md">
+                        <a href="index.html" className="inline-block bg-indigo-500 text-white px-5 py-2 rounded-lg font-bold hover:bg-indigo-600 transition mt-4 shadow-md">
                             ↩️ Quay lại Game
                         </a>
                     </div>
                 );
             }
 
-            // --- Giao diện Lịch sử & BXH (CHỈ GIỮ LẠI PHẦN BXH) ---
+            // --- Giao diện Lịch sử & BXH ---
             return (
                 <div>
-                    <h1 className="text-3xl font-extrabold text-center text-primary mb-8">📜 Bảng Xếp Hạng Tổng Hợp</h1>
+                    {/* ĐÃ CẬP NHẬT MÀU TIÊU ĐỀ THÀNH indigo-700 */}
+                    <h1 className="text-3xl font-extrabold text-center text-indigo-700 mb-8">📜 Bảng Xếp Hạng Tổng Hợp ({sessions.length} Phiên)</h1>
                     
                     {/* BẢNG XẾP HẠNG RANK COUNT */}
                     <div className="mb-10 p-5 bg-indigo-50 border border-indigo-200 rounded-xl shadow-xl">
-                        <h2 className="text-2xl font-bold text-primary mb-4 text-center border-b pb-2">🏆 Thống Kê Số Lần Đạt Rank</h2>
+                        <h2 className="text-2xl font-bold text-indigo-600 mb-4 text-center border-b pb-2">🏆 Thống Kê Số Lần Đạt Rank</h2>
                         
                         {/* Header của bảng Rank Count */}
                         <div className="flex justify-between items-center px-3 py-2 text-sm font-bold text-gray-600 border-b border-gray-300 mb-2">
@@ -261,11 +230,10 @@
                             ))}
                         </div>
                     </div>
-
-                    {/* ĐÃ LOẠI BỎ PHẦN Chi Tiết Các Phiên */}
                     
                     <div className="text-center mt-8">
-                        <a href="index.html" className="inline-block bg-primary text-white px-6 py-3 rounded-lg font-bold hover:bg-primary/80 transition shadow-lg text-lg">
+                        {/* ĐÃ CẬP NHẬT MÀU NÚT QUAY LẠI GAME */}
+                        <a href="index.html" className="inline-block bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-indigo-700 transition shadow-lg text-lg">
                             ↩️ Quay lại Game
                         </a>
                     </div>
@@ -278,4 +246,3 @@
     </script>
 </body>
 </html>
-

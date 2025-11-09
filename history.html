@@ -28,7 +28,6 @@
             text-align: center;
             font-weight: 700;
         }
-        /* Đã loại bỏ .final-score vì không còn dùng tổng điểm */
     </style>
 </head>
 <body>
@@ -36,30 +35,14 @@
 	<script type="text/babel">
         const { useState, useEffect, useMemo, useCallback } = React;
 
-        // --- CẤU HÌNH GITHUB (ĐÃ CẬP NHẬT) ---
+        // --- CẤU HÌNH GITHUB ---
         const REPO_OWNER = 'duphan97';
-        const REPO_NAME = '13cay'; // ĐÃ CẬP NHẬT THEO YÊU CẦU
+        const REPO_NAME = '13cay'; 
         const DATA_FILE_PATH = 'data/session_history.json'; 
         const GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${DATA_FILE_PATH}`;
         // --- END CẤU HÌNH GITHUB ---
 
-
-        // --- CẤU HÌNH BẢO MẬT PBKDF2 ---
-        const SECRET_PASSWORD_HASH_B64 = 'DfhK0GwpwGTAqvgGMNTYVyjjGo46w43K5Qs1h2OTqaA='; 
-        const FIXED_SALT_B64 = 'WPJeEB+s7J2CPN8Mg5oTqA==';
-        const ITERATIONS = 1000;
-        const KEY_SIZE_WORDS = 256 / 8 / 4; 
-
-        const hashPasswordPBKDF2 = (password) => {
-            const saltWords = CryptoJS.enc.Base64.parse(FIXED_SALT_B64);
-            const key = CryptoJS.PBKDF2(password, saltWords, {
-                keySize: KEY_SIZE_WORDS, 
-                iterations: ITERATIONS,
-                hasher: CryptoJS.algo.SHA256
-            });
-            return key.toString(CryptoJS.enc.Base64);
-        };
-        // --- END CẤU HÌNH BẢO MẬT PBKDF2 ---
+        // Đã loại bỏ CẤU HÌNH BẢO MẬT PBKDF2
 
 
         // --- BASE64 AN TOÀN CHO UNICODE ---
@@ -81,6 +64,7 @@
             });
 
             if (response.status === 404) {
+                // Trả về mảng rỗng nếu file không tồn tại (404)
                 return []; 
             }
             if (!response.ok) {
@@ -182,38 +166,30 @@
 
         function HistoryTLMNApp() {
             const [sessions, setSessions] = useState(null);
-            const [loading, setLoading] = useState(false);
+            const [loading, setLoading] = useState(true); // Bắt đầu ở trạng thái loading
+            const [dataError, setDataError] = useState(null); // State mới để lưu lỗi tải dữ liệu
             
-            // TRẠNG THÁI XÁC THỰC
-            const [isAuthenticated, setIsAuthenticated] = useState(false);
-            const [password, setPassword] = useState('');
-            const [authError, setAuthError] = useState(null);
-            
-            // XỬ LÝ ĐĂNG NHẬP
-            const handleLogin = async (e) => {
-                e.preventDefault();
-                setLoading(true);
-                setAuthError(null);
+            // Đã loại bỏ TRẠNG THÁI XÁC THỰC
 
-                const inputHash = hashPasswordPBKDF2(password);
-                
-                if (inputHash === SECRET_PASSWORD_HASH_B64) {
+            // Tự động tải dữ liệu khi component được mount
+            useEffect(() => {
+                const loadHistory = async () => {
+                    setLoading(true);
+                    setDataError(null);
                     try {
                         const data = await fetchHistoryFromGitHub();
                         setSessions(data);
-                        setIsAuthenticated(true);
-                        setPassword('');
                     } catch (err) {
                         console.error("Lỗi tải lịch sử:", err.message);
-                        setAuthError("Đăng nhập thành công nhưng lỗi tải dữ liệu lịch sử."); 
+                        setDataError("Đã xảy ra lỗi khi tải dữ liệu lịch sử từ GitHub.");
+                        setSessions([]); // Đặt về mảng rỗng để hiển thị thông báo lỗi/không có dữ liệu
+                    } finally {
+                        setLoading(false);
                     }
-                } else {
-                    setAuthError("Mật khẩu không chính xác. Vui lòng thử lại.");
-                    setPassword('');
-                }
-                
-                setTimeout(() => setLoading(false), 500); 
-            };
+                };
+
+                loadHistory();
+            }, []);
 
             const allTimeData = useMemo(() => calculateAllTimeData(sessions), [sessions]);
             const allTimeScoreboard = allTimeData.scoreboard;
@@ -224,45 +200,29 @@
             }, [sessions]);
 
 
-            // --- GIAO DIỆN XÁC THỰC ---
-            if (!isAuthenticated) {
-                return (
-                    <div className="flex flex-col items-center justify-center h-full min-h-[50vh] p-4">
-                        <form onSubmit={handleLogin} className="w-full max-w-sm bg-white p-8 rounded-xl shadow-2xl border border-purple-200">
-                            <h2 className="text-3xl font-extrabold text-center text-purple-700 mb-6">🔒 Truy Cập Lịch Sử</h2>
-                            <input
-                                type="password"
-                                placeholder="Nhập Mật Khẩu"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full p-3 border border-gray-300 rounded-lg mb-4 text-lg focus:ring-4 focus:ring-purple-300 focus:border-purple-500 transition duration-150"
-                                disabled={loading}
-                                required
-                            />
-                            {authError && <p className="text-red-600 text-sm mb-4 text-center font-medium">{authError}</p>}
-                            <button
-                                type="submit"
-                                className="w-full bg-purple-600 text-white font-bold text-lg py-3 rounded-lg hover:bg-purple-700 transition duration-200 disabled:bg-purple-300 shadow-md"
-                                disabled={loading || !password}
-                            >
-                                {loading ? 'Đang Kiểm Tra...' : 'Mở Lịch Sử'}
-                            </button>
-                        </form>
-                    </div>
-                );
-            }
-            
-            // --- Giao diện Tải/Lỗi sau khi Đăng nhập thành công ---
+            // --- Giao diện Tải/Lỗi ---
             if (loading || sessions === null) {
                 return (
-                    <div className="text-center p-8">
+                    <div className="text-center p-8 min-h-[50vh] flex flex-col justify-center">
                         <p className="font-semibold mb-4 text-blue-600">Đang tải lịch sử tổng hợp...</p>
                         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mx-auto"></div>
                     </div>
                 );
             }
 
-            if (authError || allTimeScoreboard.length === 0) { 
+            if (dataError) {
+                return (
+                    <div className="text-center p-8 bg-red-100 border border-red-400 rounded-xl shadow-lg">
+                        <p className="font-bold text-red-700 text-lg">⚠️ Lỗi Tải Dữ Liệu</p>
+                        <p className="text-base text-gray-600 mt-2">{dataError}</p>
+                        <a href="index.html" className="inline-block bg-blue-500 text-white px-5 py-2 rounded-lg font-bold hover:bg-blue-600 transition mt-4 shadow-md">
+                            ↩️ Quay lại Game
+                        </a>
+                    </div>
+                );
+            }
+
+            if (allTimeScoreboard.length === 0) { 
                 return (
                     <div className="text-center p-8 bg-yellow-100 border border-yellow-400 rounded-xl shadow-lg">
                         <p className="font-bold text-yellow-700 text-lg">📜 Chưa Có Dữ Liệu Lịch Sử</p>
@@ -291,7 +251,6 @@
                                 <span className="rank-count" title="Số lần đạt Hạng 2">🥈 R2</span>
                                 <span className="rank-count" title="Số lần đạt Hạng 3">🥉 R3</span>
                                 <span className="rank-count" title="Số lần đạt Hạng 4">💩 R4</span>
-                                {/* Đã loại bỏ Tổng Điểm */}
                             </div>
                         </div>
 
@@ -310,7 +269,6 @@
                                         <span className="rank-count text-blue-600">{p.ranks['2']}</span>
                                         <span className="rank-count text-orange-600">{p.ranks['3']}</span>
                                         <span className="rank-count text-red-600">{p.ranks['4']}</span>
-                                        {/* Đã loại bỏ Tổng Điểm */}
                                     </div>
                                 </div>
                             ))}
@@ -321,7 +279,7 @@
                     
                     {/* DANH SÁCH CHI TIẾT CÁC PHIÊN */}
                     <div className="space-y-8">
-                        {reversedSessions.map((session, index) => { // *** ĐÃ SỬ DỤNG reversedSessions ***
+                        {reversedSessions.map((session, index) => { 
                             
                             // Sắp xếp lại theo Rank (1, 2, 3, 4) để hiển thị
                             const sortedGameResults = session.game ? [...session.game].sort((a, b) => a.rank - b.rank) : [];

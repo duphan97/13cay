@@ -232,5 +232,31 @@
         "totalScore": 23
       }
     ]
+  },
+  {
+    "startTime": "2025-11-18T05:22:20.878Z",
+    "endTime": "2025-11-18T06:10:40.345Z",
+    "game": [
+      {
+        "name": "Quý Huỳnh",
+        "rank": 1,
+        "totalScore": 49
+      },
+      {
+        "name": "Trúc Trần",
+        "rank": 2,
+        "totalScore": 27
+      },
+      {
+        "name": "Định Ngô",
+        "rank": 3,
+        "totalScore": 25
+      },
+      {
+        "name": "Dũng Hoàng",
+        "rank": 4,
+        "totalScore": 24
+      }
+    ]
   }
 ]

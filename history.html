@@ -87,7 +87,7 @@
             return sessionsData; 
         };
 
-        // --- HÀM TÍNH TOÁN TỔNG HỢP (LOGIC MỚI) ---
+        // --- HÀM TÍNH TOÁN TỔNG HỢP (FIX LOGIC TOTALSCORE) ---
         const calculateAllTimeData = (sessions) => {
             if (!sessions || sessions.length === 0) return { scoreboard: [] };
             
@@ -134,10 +134,10 @@
                     let p3Score = -1;
 
                     // Kiểm tra điều kiện đặc biệt: Hạng 2 và 3 bằng điểm nhau -> Cả hai bị trừ 1
-                    // Lưu ý: Chỉ kiểm tra được nếu trong data có lưu thuộc tính 'score'
+                    // FIX: Sử dụng 'totalScore' thay vì 'score' để khớp với JSON
                     if (p2 && p3) {
-                        const hasScoreData = p2.score !== undefined && p3.score !== undefined;
-                        if (hasScoreData && p2.score === p3.score) {
+                        const hasScoreData = p2.totalScore !== undefined && p3.totalScore !== undefined;
+                        if (hasScoreData && p2.totalScore === p3.totalScore) {
                             p2Score = -1; // Bị trừ do bằng điểm hạng 3
                             p3Score = -1;
                         }
@@ -150,7 +150,7 @@
 
             const scoreboard = Object.values(playerStats);
             
-            // --- LOGIC SẮP XẾP MỚI ---
+            // --- LOGIC SẮP XẾP ---
             scoreboard.sort((a, b) => {
                 // 1. Ưu tiên Điểm tổng sắp (Cao xếp trên)
                 if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;

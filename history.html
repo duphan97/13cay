@@ -24,9 +24,13 @@
         /* Căn chỉnh hiển thị Rank Count */
         .rank-count {
             display: inline-block;
-            width: 40px; /* Độ rộng cố định */
+            width: 35px; /* Độ rộng cố định */
             text-align: center;
             font-weight: 700;
+        }
+        .score-badge {
+            min-width: 40px;
+            text-align: center;
         }
     </style>
 </head>
@@ -83,42 +87,86 @@
             return sessionsData; 
         };
 
-        // --- HÀM TÍNH TOÁN TỔNG HỢP (CHỈ DỰA VÀO RANK) ---
+        // --- HÀM TÍNH TOÁN TỔNG HỢP (LOGIC MỚI) ---
         const calculateAllTimeData = (sessions) => {
             if (!sessions || sessions.length === 0) return { scoreboard: [] };
             
-            const rankCountsMap = {}; 
+            const playerStats = {}; 
 
             sessions.forEach(session => {
                 if (Array.isArray(session.game)) { 
                     
-                    session.game.forEach(player => {
-                        const rank = player.rank;
-                        const playerName = player.name;
-                        
-                        rankCountsMap[playerName] = rankCountsMap[playerName] || { 1: 0, 2: 0, 3: 0, 4: 0, totalGames: 0 };
-                        
-                        if (rank >= 1 && rank <= 4) {
-                            rankCountsMap[playerName][rank]++;
+                    // Tìm người chơi theo rank trong phiên này
+                    const getByRank = (r) => session.game.find(p => p.rank === r);
+                    const p1 = getByRank(1);
+                    const p2 = getByRank(2);
+                    const p3 = getByRank(3);
+                    const p4 = getByRank(4);
+
+                    // Hàm khởi tạo/cập nhật stat cho player
+                    const updateStat = (name, rank, scoreChange) => {
+                        if (!playerStats[name]) {
+                            playerStats[name] = { 
+                                name, 
+                                ranks: { 1: 0, 2: 0, 3: 0, 4: 0 }, 
+                                totalGames: 0,
+                                totalScore: 0 
+                            };
                         }
-                        
-                        rankCountsMap[playerName].totalGames++;
-                    });
+                        if (rank >= 1 && rank <= 4) {
+                            playerStats[name].ranks[rank]++;
+                        }
+                        playerStats[name].totalGames++;
+                        playerStats[name].totalScore += scoreChange;
+                    };
+
+                    // --- ÁP DỤNG LOGIC TÍNH ĐIỂM ---
+                    
+                    // 1. Người về Nhất: +1 điểm
+                    if (p1) updateStat(p1.name, 1, 1);
+
+                    // 2. Người về Bét (Hạng 4): -1 điểm
+                    if (p4) updateStat(p4.name, 4, -1);
+
+                    // 3. Xử lý Hạng 2 và Hạng 3
+                    // Mặc định: Hạng 2 (+1), Hạng 3 (-1)
+                    let p2Score = 1;
+                    let p3Score = -1;
+
+                    // Kiểm tra điều kiện đặc biệt: Hạng 2 và 3 bằng điểm nhau -> Cả hai bị trừ 1
+                    // Lưu ý: Chỉ kiểm tra được nếu trong data có lưu thuộc tính 'score'
+                    if (p2 && p3) {
+                        const hasScoreData = p2.score !== undefined && p3.score !== undefined;
+                        if (hasScoreData && p2.score === p3.score) {
+                            p2Score = -1; // Bị trừ do bằng điểm hạng 3
+                            p3Score = -1;
+                        }
+                    }
+
+                    if (p2) updateStat(p2.name, 2, p2Score);
+                    if (p3) updateStat(p3.name, 3, p3Score);
                 }
             });
 
-            const scoreboard = Object.keys(rankCountsMap).map(name => ({
-                name,
-                ranks: rankCountsMap[name],
-                totalGames: rankCountsMap[name].totalGames
-            }));
+            const scoreboard = Object.values(playerStats);
             
-            // Logic sắp xếp: Ưu tiên Rank 1 > Rank 2 > Rank 3. Rank 4 (ít lần hơn là tốt hơn).
+            // --- LOGIC SẮP XẾP MỚI ---
             scoreboard.sort((a, b) => {
+                // 1. Ưu tiên Điểm tổng sắp (Cao xếp trên)
+                if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+                
+                // 2. Nếu bằng điểm, xét số lần về Nhất
                 if (b.ranks['1'] !== a.ranks['1']) return b.ranks['1'] - a.ranks['1'];
+                
+                // 3. Xét số lần về Nhì
                 if (b.ranks['2'] !== a.ranks['2']) return b.ranks['2'] - a.ranks['2'];
+                
+                // 4. Xét số lần về Ba
                 if (b.ranks['3'] !== a.ranks['3']) return b.ranks['3'] - a.ranks['3'];
+                
+                // 5. Xét số lần về Bét (Thấp hơn xếp trên)
                 if (a.ranks['4'] !== b.ranks['4']) return a.ranks['4'] - b.ranks['4'];
+                
                 return b.totalGames - a.totalGames; 
             });
 
@@ -192,21 +240,25 @@
             // --- Giao diện Lịch sử & BXH ---
             return (
                 <div>
-                    {/* ĐÃ CẬP NHẬT MÀU TIÊU ĐỀ THÀNH indigo-700 */}
                     <h1 className="text-3xl font-extrabold text-center text-indigo-700 mb-8">📜 Bảng Xếp Hạng Tổng Hợp ({sessions.length} Phiên)</h1>
                     
                     {/* BẢNG XẾP HẠNG RANK COUNT */}
                     <div className="mb-10 p-5 bg-indigo-50 border border-indigo-200 rounded-xl shadow-xl">
-                        <h2 className="text-2xl font-bold text-indigo-600 mb-4 text-center border-b pb-2">🏆 Thống Kê Số Lần Đạt Rank</h2>
+                        <h2 className="text-2xl font-bold text-indigo-600 mb-4 text-center border-b pb-2">🏆 BXH Tính Điểm</h2>
                         
+                        <div className="text-xs text-gray-500 mb-4 italic text-center">
+                            (Nhất/Nhì: +1 điểm | Ba/Bét: -1 điểm | Nhì bằng điểm Ba: cả hai -1)
+                        </div>
+
                         {/* Header của bảng Rank Count */}
                         <div className="flex justify-between items-center px-3 py-2 text-sm font-bold text-gray-600 border-b border-gray-300 mb-2">
-                            <span className="w-1/3 text-left">Người chơi</span>
-                            <div className="flex w-2/3 justify-end text-center">
-                                <span className="rank-count" title="Số lần đạt Hạng 1">🥇 R1</span>
-                                <span className="rank-count" title="Số lần đạt Hạng 2">🥈 R2</span>
-                                <span className="rank-count" title="Số lần đạt Hạng 3">🥉 R3</span>
-                                <span className="rank-count" title="Số lần đạt Hạng 4">💩 R4</span>
+                            <span className="w-1/4 text-left">Người chơi</span>
+                            <div className="flex w-3/4 justify-end text-center items-center">
+                                <span className="score-badge text-indigo-800 mr-4" title="Tổng Điểm">⚡ ĐIỂM</span>
+                                <span className="rank-count" title="Số lần đạt Hạng 1">🥇</span>
+                                <span className="rank-count" title="Số lần đạt Hạng 2">🥈</span>
+                                <span className="rank-count" title="Số lần đạt Hạng 3">🥉</span>
+                                <span className="rank-count" title="Số lần đạt Hạng 4">💩</span>
                             </div>
                         </div>
 
@@ -215,16 +267,21 @@
                                 <div key={p.name} className={`flex justify-between items-center p-3 rounded-lg transition duration-150 ${index === 0 ? 'bg-yellow-100 font-extrabold border-l-4 border-yellow-500' : 'bg-white border hover:bg-gray-50'}`}>
                                     
                                     {/* Tên Người Chơi */}
-                                    <span className="text-base font-semibold w-1/3 overflow-hidden text-ellipsis whitespace-nowrap">
+                                    <span className="text-base font-semibold w-1/4 overflow-hidden text-ellipsis whitespace-nowrap">
                                         {index === 0 && '👑'} {p.name}
                                     </span>
                                     
-                                    {/* Rank Count */}
-                                    <div className="flex w-2/3 justify-end items-center">
-                                        <span className="rank-count text-green-600">{p.ranks['1']}</span>
-                                        <span className="rank-count text-blue-600">{p.ranks['2']}</span>
-                                        <span className="rank-count text-orange-600">{p.ranks['3']}</span>
-                                        <span className="rank-count text-red-600">{p.ranks['4']}</span>
+                                    {/* Score & Rank Count */}
+                                    <div className="flex w-3/4 justify-end items-center">
+                                        {/* Hiển thị Điểm Tổng */}
+                                        <span className={`score-badge font-bold text-lg mr-4 ${p.totalScore > 0 ? 'text-green-600' : (p.totalScore < 0 ? 'text-red-500' : 'text-gray-500')}`}>
+                                            {p.totalScore > 0 ? `+${p.totalScore}` : p.totalScore}
+                                        </span>
+
+                                        <span className="rank-count text-green-600 bg-green-50 rounded py-1 mx-px">{p.ranks['1']}</span>
+                                        <span className="rank-count text-blue-600 bg-blue-50 rounded py-1 mx-px">{p.ranks['2']}</span>
+                                        <span className="rank-count text-orange-600 bg-orange-50 rounded py-1 mx-px">{p.ranks['3']}</span>
+                                        <span className="rank-count text-red-600 bg-red-50 rounded py-1 mx-px">{p.ranks['4']}</span>
                                     </div>
                                 </div>
                             ))}
@@ -232,7 +289,6 @@
                     </div>
                     
                     <div className="text-center mt-8">
-                        {/* ĐÃ CẬP NHẬT MÀU NÚT QUAY LẠI GAME */}
                         <a href="index.html" className="inline-block bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-indigo-700 transition shadow-lg text-lg">
                             ↩️ Quay lại Game
                         </a>
@@ -246,4 +302,3 @@
     </script>
 </body>
 </html>
-

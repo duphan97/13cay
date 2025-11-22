@@ -336,5 +336,31 @@
         "totalScore": 17
       }
     ]
+  },
+  {
+    "startTime": "2025-11-22T04:56:34.054Z",
+    "endTime": "2025-11-22T05:47:52.536Z",
+    "game": [
+      {
+        "name": "Dũng Nguyễn",
+        "rank": 1,
+        "totalScore": 44
+      },
+      {
+        "name": "Đông Lê",
+        "rank": 2,
+        "totalScore": 32
+      },
+      {
+        "name": "Bình Đặng",
+        "rank": 3,
+        "totalScore": 29
+      },
+      {
+        "name": "Trúc Trần",
+        "rank": 4,
+        "totalScore": 21
+      }
+    ]
   }
 ]

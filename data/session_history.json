@@ -414,5 +414,31 @@
         "totalScore": 27
       }
     ]
+  },
+  {
+    "startTime": "2025-11-27T03:00:26.835Z",
+    "endTime": "2025-11-27T03:39:18.115Z",
+    "game": [
+      {
+        "name": "Trúc Trần",
+        "rank": 1,
+        "totalScore": 35
+      },
+      {
+        "name": "Nhân Trần",
+        "rank": 2,
+        "totalScore": 21
+      },
+      {
+        "name": "Minh Anh",
+        "rank": 3,
+        "totalScore": 17
+      },
+      {
+        "name": "Yến Dương",
+        "rank": 4,
+        "totalScore": 16
+      }
+    ]
   }
 ]

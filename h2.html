@@ -105,7 +105,7 @@
             return sessionsData; 
         };
 
-        // --- HÀM TÍNH TOÁN TỔNG HỢP (LOGIC MỚI: TÍNH ĐIỂM) ---
+        // --- HÀM TÍNH TOÁN TỔNG HỢP (LOGIC ĐÃ SỬA) ---
         const calculateAllTimeData = (sessions) => {
             if (!sessions || sessions.length === 0) return { scoreboard: [] };
             
@@ -122,7 +122,6 @@
                     const p4 = getByRank(4);
 
                     // Hàm khởi tạo/cập nhật stat cho player
-                    // leaderboardScore: Điểm tính theo rank (+1, -1...)
                     const updateStat = (name, rank, scoreChange) => {
                         if (!playerStats[name]) {
                             playerStats[name] = { 
@@ -132,6 +131,7 @@
                                 leaderboardScore: 0 
                             };
                         }
+                        // Rank được ghi nhận: 
                         if (rank >= 1 && rank <= 4) {
                             playerStats[name].ranks[rank]++;
                         }
@@ -150,6 +150,7 @@
                     // 3. Xử lý Hạng 2 và Hạng 3
                     let p2ScoreChange = 1;
                     let p3ScoreChange = -1;
+                    let p2RankForStat = 2; // Mặc định: Ghi nhận là Hạng 2
 
                     // Kiểm tra điều kiện đặc biệt: Hạng 2 và 3 bằng điểm nhau (dựa vào totalScore trong JSON)
                     if (p2 && p3) {
@@ -157,17 +158,18 @@
                         if (hasScoreData && p2.totalScore === p3.totalScore) {
                             p2ScoreChange = -1; // Bị trừ do bằng điểm hạng 3
                             p3ScoreChange = -1;
+                            p2RankForStat = 3; // *** ĐIỀU CHỈNH: p2 được tính vào ranks['3'] ***
                         }
                     }
 
-                    if (p2) updateStat(p2.name, 2, p2ScoreChange);
-                    if (p3) updateStat(p3.name, 3, p3ScoreChange);
+                    if (p2) updateStat(p2.name, p2RankForStat, p2ScoreChange); // Sử dụng rank đã điều chỉnh
+                    if (p3) updateStat(p3.name, 3, p3ScoreChange); // p3 luôn là rank 3
                 }
             });
 
             const scoreboard = Object.values(playerStats);
             
-            // --- LOGIC SẮP XẾP MỚI ---
+            // --- LOGIC SẮP XẾP ---
             scoreboard.sort((a, b) => {
                 // 1. Ưu tiên Điểm tổng sắp (Cao xếp trên)
                 if (b.leaderboardScore !== a.leaderboardScore) return b.leaderboardScore - a.leaderboardScore;

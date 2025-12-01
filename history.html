@@ -87,7 +87,7 @@
             return sessionsData; 
         };
 
-        // --- HÀM TÍNH TOÁN TỔNG HỢP (FIX LOGIC TOTALSCORE) ---
+        // --- HÀM TÍNH TOÁN TỔNG HỢP (ĐÃ SỬA LOGIC NHÌ BẰNG BA = CẢ HAI VỀ HẠNG 3) ---
         const calculateAllTimeData = (sessions) => {
             if (!sessions || sessions.length === 0) return { scoreboard: [] };
             
@@ -96,7 +96,7 @@
             sessions.forEach(session => {
                 if (Array.isArray(session.game)) { 
                     
-                    // Tìm người chơi theo rank trong phiên này
+                    // Tìm người chơi theo rank trong phiên này (Rank đã có sẵn trong dữ liệu)
                     const getByRank = (r) => session.game.find(p => p.rank === r);
                     const p1 = getByRank(1);
                     const p2 = getByRank(2);
@@ -113,44 +113,52 @@
                                 totalScore: 0 
                             };
                         }
+                        
+                        // Cập nhật Rank Count dựa trên rank đã được xác định/điều chỉnh
                         if (rank >= 1 && rank <= 4) {
                             playerStats[name].ranks[rank]++;
                         }
+                        
                         playerStats[name].totalGames++;
                         playerStats[name].totalScore += scoreChange;
                     };
 
                     // --- ÁP DỤNG LOGIC TÍNH ĐIỂM ---
                     
-                    // 1. Người về Nhất: +1 điểm
+                    // 1. Người về Nhất: +1 điểm, Rank 1
                     if (p1) updateStat(p1.name, 1, 1);
 
-                    // 2. Người về Bét (Hạng 4): -1 điểm
+                    // 2. Người về Bét (Hạng 4): -1 điểm, Rank 4
                     if (p4) updateStat(p4.name, 4, -1);
 
                     // 3. Xử lý Hạng 2 và Hạng 3
-                    // Mặc định: Hạng 2 (+1), Hạng 3 (-1)
-                    let p2Score = 1;
-                    let p3Score = -1;
+                    let p2Score = 1;      // Mặc định: Hạng 2 (+1)
+                    let p3Score = -1;     // Mặc định: Hạng 3 (-1)
+                    let p2RankForStat = 2; // Mặc định: Ghi nhận là Hạng 2
 
                     // Kiểm tra điều kiện đặc biệt: Hạng 2 và 3 bằng điểm nhau -> Cả hai bị trừ 1
-                    // FIX: Sử dụng 'totalScore' thay vì 'score' để khớp với JSON
+                    // Yêu cầu: Trong trường hợp này, cả p2 và p3 đều được tính là về Hạng 3
                     if (p2 && p3) {
                         const hasScoreData = p2.totalScore !== undefined && p3.totalScore !== undefined;
+                        // Kiểm tra nếu tổng điểm (totalScore) của Hạng 2 và Hạng 3 trong ván đó bằng nhau
                         if (hasScoreData && p2.totalScore === p3.totalScore) {
-                            p2Score = -1; // Bị trừ do bằng điểm hạng 3
-                            p3Score = -1;
+                            p2Score = -1;      // Bị trừ điểm
+                            p3Score = -1;      // Bị trừ điểm
+                            p2RankForStat = 3; // *** ĐIỀU CHỈNH: p2 được tính vào ranks['3'] ***
                         }
                     }
 
-                    if (p2) updateStat(p2.name, 2, p2Score);
+                    // Cập nhật stats cho p2 (sử dụng p2RankForStat đã điều chỉnh)
+                    if (p2) updateStat(p2.name, p2RankForStat, p2Score); 
+                    
+                    // Cập nhật stats cho p3 (luôn được tính là Hạng 3)
                     if (p3) updateStat(p3.name, 3, p3Score);
                 }
             });
 
             const scoreboard = Object.values(playerStats);
             
-            // --- LOGIC SẮP XẾP ---
+            // --- LOGIC SẮP XẾP --- (Giữ nguyên)
             scoreboard.sort((a, b) => {
                 // 1. Ưu tiên Điểm tổng sắp (Cao xếp trên)
                 if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
@@ -245,10 +253,6 @@
                     {/* BẢNG XẾP HẠNG RANK COUNT */}
                     <div className="mb-10 p-5 bg-indigo-50 border border-indigo-200 rounded-xl shadow-xl">
                         <h2 className="text-2xl font-bold text-indigo-600 mb-4 text-center border-b pb-2">🏆 BXH Tính Điểm</h2>
-                        
-                        <div className="text-xs text-gray-500 mb-4 italic text-center">
-                            (Nhất/Nhì: +1 điểm | Ba/Bét: -1 điểm | Nhì bằng điểm Ba: cả hai -1)
-                        </div>
 
                         {/* Header của bảng Rank Count */}
                         <div className="flex justify-between items-center px-3 py-2 text-sm font-bold text-gray-600 border-b border-gray-300 mb-2">

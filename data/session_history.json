@@ -492,5 +492,31 @@
         "totalScore": 27
       }
     ]
+  },
+  {
+    "startTime": "2025-12-02T05:21:12.905Z",
+    "endTime": "2025-12-02T06:13:42.572Z",
+    "game": [
+      {
+        "name": "Bình Đặng",
+        "rank": 1,
+        "totalScore": 44
+      },
+      {
+        "name": "Dũng Hoàng",
+        "rank": 2,
+        "totalScore": 29
+      },
+      {
+        "name": "Khánh Đỗ",
+        "rank": 3,
+        "totalScore": 29
+      },
+      {
+        "name": "Dũng Nguyễn",
+        "rank": 4,
+        "totalScore": 24
+      }
+    ]
   }
 ]

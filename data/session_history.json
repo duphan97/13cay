@@ -674,5 +674,31 @@
         "totalScore": 28
       }
     ]
+  },
+  {
+    "startTime": "2025-12-10T05:21:26.450Z",
+    "endTime": "2025-12-10T06:12:59.779Z",
+    "game": [
+      {
+        "name": "Dũng Nguyễn",
+        "rank": 1,
+        "totalScore": 39
+      },
+      {
+        "name": "Trúc Trần",
+        "rank": 2,
+        "totalScore": 37
+      },
+      {
+        "name": "Minh Anh",
+        "rank": 3,
+        "totalScore": 28
+      },
+      {
+        "name": "Bình Đặng",
+        "rank": 4,
+        "totalScore": 21
+      }
+    ]
   }
 ]

@@ -830,5 +830,31 @@
         "totalScore": 20
       }
     ]
+  },
+  {
+    "startTime": "2025-12-19T04:51:38.535Z",
+    "endTime": "2025-12-19T05:34:48.892Z",
+    "game": [
+      {
+        "name": "Minh Anh",
+        "rank": 1,
+        "totalScore": 37
+      },
+      {
+        "name": "Đông Lê",
+        "rank": 2,
+        "totalScore": 33
+      },
+      {
+        "name": "Quý Huỳnh",
+        "rank": 3,
+        "totalScore": 30
+      },
+      {
+        "name": "Dũng Nguyễn",
+        "rank": 4,
+        "totalScore": 29
+      }
+    ]
   }
 ]

@@ -882,5 +882,31 @@
         "totalScore": 26
       }
     ]
+  },
+  {
+    "startTime": "2026-01-06T05:06:07.873Z",
+    "endTime": "2026-01-06T05:45:14.333Z",
+    "game": [
+      {
+        "name": "Đông Lê",
+        "rank": 1,
+        "totalScore": 40
+      },
+      {
+        "name": "Bình Đặng",
+        "rank": 2,
+        "totalScore": 35
+      },
+      {
+        "name": "Trúc Trần",
+        "rank": 3,
+        "totalScore": 29
+      },
+      {
+        "name": "Quý Huỳnh",
+        "rank": 4,
+        "totalScore": 25
+      }
+    ]
   }
 ]
